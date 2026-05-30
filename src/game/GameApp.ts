@@ -141,6 +141,7 @@ export class GameApp {
 
   private claimLoot(): void {
     if (this.run.phase !== "lootResult") return;
+    this.floatingTexts = [];
     for (const part of this.lootRewards) {
       if (part.category === "catalyst") {
         this.floatingTexts.push({ text: "融合催化剂已装填：本轮会强制融合", ttl: 1600, color: "#fff6a3" });
@@ -151,7 +152,6 @@ export class GameApp {
         this.run.inventory.push(createEquippedPart(part, "body"));
       }
     }
-    this.floatingTexts.push({ text: `第 ${this.run.round} 轮零件入库，拖到骨架上`, ttl: 1500, color: "#b9ffcf" });
     this.enterPhase("assembly");
   }
 
@@ -185,7 +185,7 @@ export class GameApp {
   private enterCombat(): void {
     this.enterPhase("combat");
     this.projectiles = this.createProjectiles();
-    this.floatingTexts.push({ text: "战斗开始：所有零件自动开火", ttl: 1500, color: "#fff" });
+    this.floatingTexts = [];
   }
 
   private finishCombat(): void {
@@ -452,7 +452,8 @@ export class GameApp {
 
   private handleButton(button: ButtonId): void {
     if (button === "start") {
-      this.startAdventure();
+      if (this.run.phase === "launch") this.enterPhase("home");
+      else this.startAdventure();
       return;
     }
     if (button === "backHome") {
@@ -485,6 +486,33 @@ export class GameApp {
     }
     if (button === "tutorial") {
       this.enterPhase("tutorial");
+      return;
+    }
+    if (button === "tabAssembly") {
+      if (this.run.phase === "loot") this.showLootResult();
+      else if (this.run.phase === "lootResult") this.claimLoot();
+      else if (this.run.inventory.length > 0 || this.hasEquippedItems()) this.enterPhase("assembly");
+      else this.startAdventure();
+      return;
+    }
+    if (button === "tabFusion") {
+      if (!this.hasEquippedItems()) {
+        this.floatingTexts.push({ text: "先拼装至少一个零件", ttl: 1100, color: "#ffffff" });
+        return;
+      }
+      this.enterPhase("fusion");
+      return;
+    }
+    if (button === "tabCombat") {
+      if (!this.hasEquippedItems()) {
+        this.floatingTexts.push({ text: "没有装备，无法进入战斗", ttl: 1100, color: "#ffffff" });
+        return;
+      }
+      this.enterCombat();
+      return;
+    }
+    if (button === "tabMuseum") {
+      this.enterPhase("museum");
       return;
     }
     if (button === "autoEquip") {

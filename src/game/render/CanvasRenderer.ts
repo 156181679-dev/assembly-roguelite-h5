@@ -17,7 +17,11 @@ export type ButtonId =
   | "settings"
   | "graveStart"
   | "weaponDetail"
-  | "tutorial";
+  | "tutorial"
+  | "tabAssembly"
+  | "tabFusion"
+  | "tabCombat"
+  | "tabMuseum";
 
 interface DragRenderState {
   item: EquippedItem;
@@ -69,28 +73,6 @@ interface Rect {
   w: number;
   h: number;
 }
-
-type UIScreenId =
-  | "launch"
-  | "home"
-  | "loot"
-  | "lootResult"
-  | "assembly"
-  | "fusion"
-  | "fusionSuccess"
-  | "combat"
-  | "overdrive"
-  | "result"
-  | "museum"
-  | "weaponDetail"
-  | "graveyard"
-  | "graveStart"
-  | "share"
-  | "shop"
-  | "missions"
-  | "achievements"
-  | "settings"
-  | "tutorial";
 
 const WIDTH = 360;
 const HEIGHT = 640;
@@ -155,34 +137,10 @@ const SLOT_POSITIONS: Record<SlotId, { x: number; y: number; label: string }> = 
 
 const button = (id: ButtonId, x: number, y: number, w: number, h: number): Rect => ({ id, x, y, w, h });
 
-const UI_SCREEN_FILES: Record<UIScreenId, string> = {
-  launch: "/assets/ui-screens/01_启动页_launch_screen.png",
-  home: "/assets/ui-screens/02_首页_home.png",
-  loot: "/assets/ui-screens/03_轮盘开箱_loot_wheel.png",
-  lootResult: "/assets/ui-screens/04_开箱结果_loot_result.png",
-  assembly: "/assets/ui-screens/05_拼装界面_assembly.png",
-  fusion: "/assets/ui-screens/06_融合界面_fusion.png",
-  fusionSuccess: "/assets/ui-screens/07_融合成功_fusion_success.png",
-  combat: "/assets/ui-screens/08_自动战斗_auto_battle.png",
-  overdrive: "/assets/ui-screens/09_超载时刻_overdrive.png",
-  result: "/assets/ui-screens/10_战斗胜利_victory.png",
-  museum: "/assets/ui-screens/11_怪物博物馆_museum.png",
-  weaponDetail: "/assets/ui-screens/12_武器详情_weapon_detail.png",
-  graveyard: "/assets/ui-screens/13_坟场_死亡_graveyard_death.png",
-  graveStart: "/assets/ui-screens/14_挖坟开局_grave_start.png",
-  share: "/assets/ui-screens/15_分享卡片_share_card.png",
-  shop: "/assets/ui-screens/16_商店界面_shop.png",
-  missions: "/assets/ui-screens/17_任务界面_missions.png",
-  achievements: "/assets/ui-screens/18_成就界面_achievements.png",
-  settings: "/assets/ui-screens/19_设置界面_settings.png",
-  tutorial: "/assets/ui-screens/20_新手引导示例_tutorial.png"
-};
-
 export class CanvasRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly assets: Record<"master" | "hero" | "parts" | "weapons" | "boss", HTMLImageElement>;
-  private readonly uiScreens: Record<UIScreenId, HTMLImageElement>;
+  private readonly assets: Record<"hero" | "parts" | "weapons" | "boss", HTMLImageElement>;
   private buttons: Rect[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -193,15 +151,11 @@ export class CanvasRenderer {
     this.canvas = canvas;
     this.ctx = ctx;
     this.assets = {
-      master: this.loadImage("/assets/generated/neon-master-visual.png"),
       hero: this.loadImage("/assets/generated/mecha-fish-base.png"),
       parts: this.loadImage("/assets/generated/base-parts-sheet.png"),
       weapons: this.loadImage("/assets/generated/fusion-weapons-12-sheet.png"),
       boss: this.loadImage("/assets/generated/boss-asteroid-demon.png")
     };
-    this.uiScreens = Object.fromEntries(
-      Object.entries(UI_SCREEN_FILES).map(([key, path]) => [key, this.loadImage(path)])
-    ) as Record<UIScreenId, HTMLImageElement>;
   }
 
   render(model: RenderModel): void {
@@ -247,10 +201,18 @@ export class CanvasRenderer {
 
   private drawLaunch(model: RenderModel): void {
     this.drawBackground(model);
-    if (this.isImageReady(this.assets.master)) {
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.78;
+    this.drawHalftone(48, 126, 4, 10, PALETTE.purple, 0.34);
+    this.drawHalftone(248, 92, 4, 9, PALETTE.cyan, 0.26);
+    this.drawLightning(28, 108, 104, 222, PALETTE.cyan, 0.52);
+    this.drawLightning(330, 104, 250, 246, PALETTE.purple, 0.58);
+    this.ctx.restore();
+    if (this.isImageReady(this.assets.hero)) {
       this.ctx.save();
-      this.ctx.globalAlpha = 0.92;
-      this.drawCoverImage(this.assets.master, 0, 0, WIDTH, HEIGHT);
+      this.ctx.shadowBlur = 34;
+      this.ctx.shadowColor = PALETTE.cyan;
+      this.ctx.drawImage(this.assets.hero, 75, 178, 230, 330);
       this.ctx.restore();
     }
     this.drawTitleLogo(180, 82, 42);
@@ -354,6 +316,8 @@ export class CanvasRenderer {
     this.drawText("秒伤", 70, 430, 18, PALETTE.white, "900");
     this.drawText("9.99E+08", 286, 430, 20, PALETTE.cyan, "900", "right");
     this.drawText("我的怪物，我来造！", 70, 524, 20, PALETTE.purple, "900");
+    this.drawButton("result", 42, 552, 126, 36, "回结算");
+    this.drawButton("restart", 194, 552, 126, 36, "再来一局");
   }
 
   private drawTutorial(_model: RenderModel): void {
@@ -424,95 +388,6 @@ export class CanvasRenderer {
       this.drawText(row, 52, y + 29, 14, PALETTE.white, "800");
     });
     this.buttons.push(button("backHome", 20, 20, 70, 54));
-  }
-
-  private screenFor(model: RenderModel): UIScreenId {
-    if (model.phase === "combat" && model.overdrive) return "overdrive";
-    return model.phase as UIScreenId;
-  }
-
-  private drawReferenceScreen(model: RenderModel): void {
-    const screen = this.screenFor(model);
-    const image = this.uiScreens[screen];
-    if (this.isImageReady(image)) {
-      this.drawCoverImage(image, 0, 0, WIDTH, HEIGHT);
-      return;
-    }
-    this.drawBackground(model);
-  }
-
-  private drawReferenceOverlays(model: RenderModel): void {
-    if (model.phase === "assembly") {
-      this.drawEquippedOverlays(model);
-      this.drawButton("autoEquip", 28, 560, 132, 36, "一键装配");
-      this.drawButton("continue", 200, 560, 132, 36, "去融合");
-      return;
-    }
-
-    if (model.phase === "fusion") {
-      this.drawEquippedOverlays(model);
-      this.drawButton("fuse", 28, 560, 132, 36, "一键融合");
-      this.drawButton("continue", 200, 560, 132, 36, "下一轮");
-      return;
-    }
-
-    if (model.phase === "fusionSuccess") {
-      const fused = model.fusedWeapons[model.fusedWeapons.length - 1];
-      if (fused) this.drawFusionWeapon(fused, 180, 360, 48);
-      this.drawButton("continue", 104, 552, 152, 40, "自动装配中");
-      return;
-    }
-
-    if (model.phase === "combat") {
-      this.drawCombatEffects(model);
-      return;
-    }
-
-    if (model.phase === "result") {
-      this.drawButton("museum", 70, 560, 220, 38, "进入博物馆");
-    }
-  }
-
-  private registerReferenceButtons(model: RenderModel): void {
-    const phase = model.phase;
-    if (phase === "launch") {
-      this.buttons.push(button("start", 80, 520, 200, 64));
-      return;
-    }
-    if (phase === "home") {
-      this.buttons.push(button("start", 82, 292, 196, 54));
-      this.buttons.push(button("graveStart", 94, 360, 172, 42));
-      this.buttons.push(button("museum", 22, 142, 62, 54));
-      this.buttons.push(button("achievements", 22, 202, 62, 54));
-      this.buttons.push(button("settings", 22, 262, 62, 54));
-      this.buttons.push(button("shop", 28, 560, 70, 54));
-      this.buttons.push(button("missions", 108, 560, 70, 54));
-      this.buttons.push(button("weaponDetail", 188, 560, 70, 54));
-      return;
-    }
-    if (phase === "loot" || phase === "lootResult" || phase === "fusionSuccess" || phase === "graveStart" || phase === "tutorial") {
-      this.buttons.push(button("continue", 0, 0, WIDTH, HEIGHT));
-      return;
-    }
-    if (phase === "combat") {
-      this.buttons.push(button("continue", 0, 0, WIDTH, HEIGHT));
-      return;
-    }
-    if (["museum", "weaponDetail", "graveyard", "share", "shop", "missions", "achievements", "settings"].includes(phase)) {
-      this.buttons.push(button("backHome", 0, 0, 82, 82));
-    }
-  }
-
-  private drawCombatEffects(model: RenderModel): void {
-    for (const projectile of model.projectiles) {
-      const x = 180 + Math.cos(projectile.angle) * projectile.radius;
-      const y = 320 + Math.sin(projectile.angle) * projectile.radius * 0.74;
-      this.drawLaser(180, 315, x, y, projectile.color, model.overdrive ? 5 : 3);
-      this.drawProjectile(projectile, x, y, model.overdrive);
-    }
-    if (model.maxCombo > 0) {
-      this.drawCenteredText(`COMBO x${Math.max(model.maxCombo, model.overdrive ? 56 : 0)}`, 230, 526, 15, PALETTE.yellow, "900");
-    }
   }
 
   hitTestButton(x: number, y: number): ButtonId | undefined {
@@ -619,15 +494,23 @@ export class CanvasRenderer {
     bg.addColorStop(1, "#07101e");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    if (this.assets.master.complete && this.assets.master.naturalWidth > 0) {
-      ctx.save();
-      ctx.globalAlpha = model.phase === "loot" ? 0.84 : 0.5;
-      this.drawCoverImage(this.assets.master, 0, 0, WIDTH, HEIGHT);
-      ctx.globalAlpha = model.phase === "loot" ? 0.12 : 0.32;
-      ctx.fillStyle = "#03040b";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = model.phase === "combat" ? 0.24 : 0.18;
+    ctx.strokeStyle = model.overdrive ? "rgba(255,227,41,0.5)" : "rgba(18,244,255,0.45)";
+    ctx.lineWidth = 1;
+    for (let x = -40; x < WIDTH + 60; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, 80);
+      ctx.lineTo(x + 110, HEIGHT);
+      ctx.stroke();
     }
+    for (let y = 122; y < HEIGHT; y += 48) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(WIDTH, y + 22);
+      ctx.stroke();
+    }
+    ctx.restore();
     this.drawHalftone(296, 72, 4, 9, PALETTE.purple, 0.36);
     this.drawHalftone(36, 464, 3, 8, PALETTE.cyan, 0.2);
     for (let i = 0; i < 12; i += 1) {
@@ -707,23 +590,192 @@ export class CanvasRenderer {
   }
 
   private drawCombat(model: RenderModel): void {
+    const bossHpRatio = Math.max(0.03, 1 - model.phaseProgress * (model.overdrive ? 1.02 : 0.9));
+    const remainingSeconds = Math.max(0, Math.ceil(60 * (1 - model.phaseProgress)));
     this.drawNeonPanel(14, 96, 332, 460, model.overdrive ? PALETTE.yellow : PALETTE.purple, 12);
-    this.drawCenteredText("4. 自动战斗", 180, 130, 23, PALETTE.white, "900");
-    this.drawBattlefield(model);
-    this.drawMechaSkeleton(model, true);
-    this.drawEquippedOverlays(model, true);
-    for (const projectile of model.projectiles) {
-      const x = 180 + Math.cos(projectile.angle) * projectile.radius;
-      const y = 320 + Math.sin(projectile.angle) * projectile.radius * 0.74;
-      this.drawLaser(180, 304, x, y, projectile.color, model.overdrive ? 6 : 3);
-      this.drawProjectile(projectile, x, y, model.overdrive);
+    this.drawCombatArena(model);
+    this.drawCombatHud(model, bossHpRatio, remainingSeconds);
+    this.drawCombatEnemies(model, bossHpRatio);
+    this.drawCombatHero(model);
+    this.drawCombatWeaponMounts(model);
+    this.drawCombatAttacks(model);
+    this.drawCombatDamage(model);
+  }
+
+  private drawCombatArena(model: RenderModel): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(24, 148, 312, 356, 12);
+    ctx.clip();
+
+    const arena = ctx.createLinearGradient(24, 148, 336, 504);
+    arena.addColorStop(0, model.overdrive ? "#370818" : "#110b25");
+    arena.addColorStop(0.54, "#071629");
+    arena.addColorStop(1, "#05060d");
+    ctx.fillStyle = arena;
+    ctx.fillRect(24, 148, 312, 356);
+
+    ctx.globalAlpha = 0.36;
+    ctx.strokeStyle = model.overdrive ? PALETTE.yellow : PALETTE.cyan;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 9; i += 1) {
+      const y = 198 + i * 34 + (model.phaseProgress * 42) % 34;
+      ctx.beginPath();
+      ctx.moveTo(26, y);
+      ctx.lineTo(334, y - 22);
+      ctx.stroke();
     }
-    this.drawDamageNumber("-9.99E+08", 258, 222, 20, PALETTE.yellow);
-    this.drawDamageNumber("-1.56E+06", 270, 259, 16, PALETTE.purple);
-    this.drawDamageNumber("-7.88E+07", 262, 300, 16, PALETTE.red);
-    this.drawCenteredText(`COMBO x${Math.max(model.maxCombo, model.overdrive ? 999 : 0)}!`, 236, 382, 18, PALETTE.yellow, "900");
-    this.drawCenteredText(`秒伤 ${model.maxDps.toLocaleString()}`, 180, 513, 21, PALETTE.cyan, "900");
-    if (model.overdrive) this.drawCenteredText("超载模式", 180, 173, 34, PALETTE.yellow, "900");
+    for (let i = 0; i < 7; i += 1) {
+      const x = 36 + i * 48;
+      ctx.beginPath();
+      ctx.moveTo(x, 154);
+      ctx.lineTo(x - 66, 504);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    this.drawHalftone(254, 174, 3, 8, PALETTE.red, model.overdrive ? 0.5 : 0.3);
+    this.drawLightning(36, 182, 136, 246, PALETTE.cyan, 0.42);
+    this.drawLightning(328, 206, 260, 338, model.overdrive ? PALETTE.yellow : PALETTE.purple, 0.48);
+  }
+
+  private drawCombatHud(model: RenderModel, bossHpRatio: number, remainingSeconds: number): void {
+    this.drawCenteredText(model.overdrive ? "超载时刻！" : "4. 自动战斗", 180, 128, model.overdrive ? 28 : 23, model.overdrive ? PALETTE.yellow : PALETTE.white, "900");
+    this.drawNeonPanel(30, 142, 300, 42, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
+    this.drawText(`第 ${model.round} 波`, 44, 166, 13, PALETTE.white, "900");
+    this.drawCenteredText(`${remainingSeconds}s`, 176, 166, 16, PALETTE.yellow, "900");
+    this.drawText(`DPS ${this.formatMetric(Math.max(model.maxDps, 973))}`, 316, 166, 13, PALETTE.cyan, "900", "right");
+    this.drawBar(44, 176, 272, 6, bossHpRatio, PALETTE.red, "rgba(255,255,255,0.18)");
+  }
+
+  private drawCombatEnemies(model: RenderModel, bossHpRatio: number): void {
+    this.drawMinion(288, 358, model.phaseProgress, PALETTE.purple);
+    this.drawMinion(226, 418, model.phaseProgress + 0.28, PALETTE.red);
+    this.drawMinion(306, 442, model.phaseProgress + 0.53, PALETTE.orange);
+    this.drawBoss(260, 276, model.overdrive);
+    this.drawCenteredText(`裂隙首领 ${Math.ceil(bossHpRatio * 100)}%`, 260, 200, 13, PALETTE.white, "900");
+  }
+
+  private drawCombatHero(model: RenderModel): void {
+    const ctx = this.ctx;
+    const x = 42;
+    const y = 290 + Math.sin(model.phaseProgress * Math.PI * 10) * 2;
+    ctx.save();
+    ctx.shadowBlur = model.overdrive ? 28 : 18;
+    ctx.shadowColor = model.overdrive ? PALETTE.yellow : PALETTE.cyan;
+    ctx.fillStyle = "rgba(18,244,255,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(112, 494, 62, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (this.isImageReady(this.assets.hero)) {
+      ctx.drawImage(this.assets.hero, x, y, 142, 214);
+    } else {
+      this.drawMechaPortrait(this.equippedItems(model)[0], 112, 398, 0.72);
+    }
+    ctx.restore();
+  }
+
+  private drawCombatWeaponMounts(model: RenderModel): void {
+    const ctx = this.ctx;
+    const positions = this.combatSlotPositions();
+    for (const slotId of SLOT_ORDER) {
+      const item = model.equipped[slotId];
+      if (!item) continue;
+      const pos = positions[slotId];
+      ctx.save();
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = item.fused ? 3 : 2;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = item.color;
+      ctx.beginPath();
+      ctx.moveTo(112, 394);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.restore();
+      this.drawItem(item, pos.x, pos.y, item.fused ? 22 : 17, true);
+    }
+  }
+
+  private drawCombatAttacks(model: RenderModel): void {
+    const positions = Object.values(this.combatSlotPositions());
+    const projectiles = model.projectiles.length > 0 ? model.projectiles : this.equippedItems(model).map((item) => ({
+      angle: 0,
+      radius: 0,
+      color: item.color,
+      icon: item.icon,
+      sourcePartId: item.sourcePartIds[0],
+      weaponId: item.weaponId,
+      fused: item.fused
+    }));
+
+    projectiles.slice(0, 16).forEach((projectile, index) => {
+      const start = positions[index % positions.length];
+      const target = {
+        x: 260 + Math.cos(index * 1.7) * 44,
+        y: 276 + Math.sin(index * 1.3) * 54
+      };
+      const speed = projectile.fused ? 5.8 : 4.2;
+      const t = (model.phaseProgress * speed + index * 0.17) % 1;
+      const control = {
+        x: (start.x + target.x) / 2 + Math.sin(index * 2.1) * 34,
+        y: Math.min(start.y, target.y) - 72 - (index % 3) * 8
+      };
+      const prev = this.quadraticPoint(start, control, target, Math.max(0, t - 0.08));
+      const point = this.quadraticPoint(start, control, target, t);
+      this.drawLaser(prev.x, prev.y, point.x, point.y, projectile.color, model.overdrive || projectile.fused ? 5 : 3);
+      this.drawProjectile(projectile, point.x, point.y, model.overdrive || projectile.fused);
+      if (t > 0.82) {
+        this.drawExplosion(target.x, target.y, projectile.color, 1 - (t - 0.82) / 0.18);
+      }
+    });
+  }
+
+  private drawCombatDamage(model: RenderModel): void {
+    const baseDamage = Math.max(128, Math.floor(model.maxDps * 0.72 + model.fusionCount * 420 + model.maxCombo * 96));
+    for (let index = 0; index < 6; index += 1) {
+      const t = (model.phaseProgress * 7.2 + index * 0.18) % 1;
+      const critical = model.overdrive || index % 3 === 0;
+      const damage = baseDamage * (critical ? 12 + index : 1 + index * 0.4);
+      const x = 228 + ((index * 37) % 88);
+      const y = 338 - t * 120 + Math.sin(index) * 10;
+      this.drawDamageNumber(`-${this.formatMetric(damage)}`, x, y, critical ? 20 : 15, critical ? PALETTE.yellow : PALETTE.purple);
+    }
+    this.drawNeonPanel(58, 510, 244, 34, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
+    this.drawCenteredText(`COMBO x${Math.max(model.maxCombo, model.overdrive ? 56 : 1)}  秒伤 ${this.formatMetric(Math.max(model.maxDps, 973))}`, 180, 533, 15, model.overdrive ? PALETTE.yellow : PALETTE.cyan, "900");
+  }
+
+  private drawMinion(x: number, y: number, progress: number, color: string): void {
+    const ctx = this.ctx;
+    const bob = Math.sin(progress * Math.PI * 8) * 4;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = color;
+    ctx.fillStyle = "rgba(9,8,21,0.86)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18, 14, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(-6, -3, 3, 0, Math.PI * 2);
+    ctx.arc(7, -3, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private combatSlotPositions(): Record<SlotId, { x: number; y: number }> {
+    return {
+      head: { x: 112, y: 282 },
+      body: { x: 112, y: 372 },
+      left_hand: { x: 56, y: 374 },
+      right_hand: { x: 166, y: 360 },
+      back: { x: 158, y: 310 },
+      feet: { x: 112, y: 488 }
+    };
   }
 
   private drawResult(model: RenderModel): void {
@@ -836,15 +888,15 @@ export class CanvasRenderer {
   }
 
   private drawInventory(inventory: EquippedItem[]): void {
-    this.drawText("零件栏", 30, 476, 15, PALETTE.white, "900");
+    this.drawText("零件栏", 30, 474, 15, PALETTE.white, "900");
     if (inventory.length === 0) {
       this.drawCenteredText("库存空了，拖已装零件继续调整", 180, 489, 12, "rgba(255,255,255,0.56)", "700");
       return;
     }
     inventory.slice(0, 6).forEach((item, index) => {
       const pos = this.inventoryPosition(index);
-      this.drawNeonPanel(pos.x - 24, pos.y - 24, 48, 48, item.color, 6);
-      this.drawItem(item, pos.x, pos.y, 20);
+      this.drawNeonPanel(pos.x - 20, pos.y - 20, 40, 40, item.color, 6);
+      this.drawItem(item, pos.x, pos.y, 14);
     });
   }
 
@@ -948,15 +1000,15 @@ export class CanvasRenderer {
   }
 
   private drawBottomTabs(active: GamePhase): void {
-    const labels: Array<[GamePhase, string, string]> = [
-      ["loot", "拼装", "拼"],
-      ["assembly", "融合", "融"],
-      ["fusion", "战斗", "战"],
-      ["museum", "商店", "馆"]
+    const labels: Array<[ButtonId, string, string, boolean]> = [
+      ["tabAssembly", "拼装", "拼", active === "loot" || active === "lootResult" || active === "assembly"],
+      ["tabFusion", "融合", "融", active === "fusion" || active === "fusionSuccess"],
+      ["tabCombat", "战斗", "战", active === "combat" || active === "result"],
+      ["tabMuseum", "馆藏", "馆", active === "museum" || active === "shop" || active === "missions" || active === "achievements"]
     ];
-    labels.forEach(([phase, label, icon], index) => {
+    labels.forEach(([id, label, icon, isActive], index) => {
       const x = 24 + index * 78;
-      const isActive = active === phase || (active === "result" && phase === "museum");
+      this.buttons.push(button(id, x, 604, 56, 30));
       this.drawNeonPanel(x, 604, 56, 30, isActive ? PALETTE.yellow : PALETTE.purple, 4);
       this.drawCenteredText(icon, x + 28, 619, 13, isActive ? "#11131a" : PALETTE.white, "900");
       this.drawCenteredText(label, x + 28, 631, 8, isActive ? "#11131a" : "rgba(255,255,255,0.76)", "800");
@@ -964,7 +1016,7 @@ export class CanvasRenderer {
   }
 
   private inventoryPosition(index: number): { x: number; y: number } {
-    return { x: 46 + index * 49, y: 536 };
+    return { x: 46 + index * 49, y: 506 };
   }
 
   private drawButton(id: ButtonId, x: number, y: number, w: number, h: number, label: string): void {
@@ -1262,6 +1314,45 @@ export class CanvasRenderer {
     this.ctx.rotate(-0.08);
     this.drawCenteredText(text, x, y, size, color, "900");
     this.ctx.restore();
+  }
+
+  private drawBar(x: number, y: number, width: number, height: number, ratio: number, fill: string, track: string): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = track;
+    ctx.fillRect(x, y, width, height);
+    const gradient = ctx.createLinearGradient(x, y, x + width, y);
+    gradient.addColorStop(0, PALETTE.orange);
+    gradient.addColorStop(0.55, fill);
+    gradient.addColorStop(1, "#7b0d24");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, width * Math.max(0, Math.min(1, ratio)), height);
+    ctx.strokeStyle = "rgba(255,255,255,0.42)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, width, height);
+    ctx.restore();
+  }
+
+  private quadraticPoint(
+    from: { x: number; y: number },
+    control: { x: number; y: number },
+    to: { x: number; y: number },
+    t: number
+  ): { x: number; y: number } {
+    const safeT = Math.max(0, Math.min(1, t));
+    const inv = 1 - safeT;
+    return {
+      x: inv * inv * from.x + 2 * inv * safeT * control.x + safeT * safeT * to.x,
+      y: inv * inv * from.y + 2 * inv * safeT * control.y + safeT * safeT * to.y
+    };
+  }
+
+  private formatMetric(value: number): string {
+    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+    if (value >= 10_000) return `${Math.round(value / 1000)}K`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+    return Math.round(value).toString();
   }
 
   private drawPointer(x: number, y: number): void {
