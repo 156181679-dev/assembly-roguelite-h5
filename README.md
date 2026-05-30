@@ -48,7 +48,15 @@ npm test -- --run
 
 ## 美术素材
 
-当前版本使用程序化 Canvas 占位美术，视觉方向已调整为赛博霓虹、漫画机甲、爆炸伤害数字风格。真实 Image2 素材提示词见：
+当前版本已接入首批 Image2 素材：
+
+```text
+public/assets/generated/neon-master-visual.png
+public/assets/generated/mecha-fish-hero.png
+public/assets/generated/fusion-weapons-sheet.png
+```
+
+后续继续扩充或重生成素材时，可复用提示词清单：
 
 ```text
 docs/IMAGE2_ASSET_PROMPTS.md

@@ -1,6 +1,14 @@
 # Image2 美术素材生成清单
 
-当前环境没有可直接调用的内置 Image2 工具，且本机未检测到 `OPENAI_API_KEY`，所以这轮不能实际生成图片文件。下面是可直接投喂 Image2 / gpt-image-2 的项目资产提示词。生成后建议放入 `public/assets/`，再把 Canvas 里的程序化占位替换为图片绘制。
+当前已生成并接入首批 Image2 资产：
+
+```text
+public/assets/generated/neon-master-visual.png
+public/assets/generated/mecha-fish-hero.png
+public/assets/generated/fusion-weapons-sheet.png
+```
+
+下面保留可继续投喂 Image2 / gpt-image-2 的项目资产提示词。新增素材建议放入 `public/assets/`，再在 Canvas 渲染器中替换或扩展绘制逻辑。
 
 ## 统一美术方向
 

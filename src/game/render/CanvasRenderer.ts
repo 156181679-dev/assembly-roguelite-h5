@@ -79,6 +79,7 @@ const button = (id: ButtonId, x: number, y: number, w: number, h: number): Rect 
 export class CanvasRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
+  private readonly assets: Record<"master" | "hero" | "weapons", HTMLImageElement>;
   private buttons: Rect[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -88,6 +89,11 @@ export class CanvasRenderer {
     }
     this.canvas = canvas;
     this.ctx = ctx;
+    this.assets = {
+      master: this.loadImage("/assets/generated/neon-master-visual.png"),
+      hero: this.loadImage("/assets/generated/mecha-fish-hero.png"),
+      weapons: this.loadImage("/assets/generated/fusion-weapons-sheet.png")
+    };
   }
 
   render(model: RenderModel): void {
@@ -216,6 +222,15 @@ export class CanvasRenderer {
     bg.addColorStop(1, "#07101e");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    if (this.assets.master.complete && this.assets.master.naturalWidth > 0) {
+      ctx.save();
+      ctx.globalAlpha = model.phase === "loot" ? 0.84 : 0.5;
+      this.drawCoverImage(this.assets.master, 0, 0, WIDTH, HEIGHT);
+      ctx.globalAlpha = model.phase === "loot" ? 0.12 : 0.32;
+      ctx.fillStyle = "#03040b";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.restore();
+    }
     this.drawHalftone(296, 72, 4, 9, PALETTE.purple, 0.36);
     this.drawHalftone(36, 464, 3, 8, PALETTE.cyan, 0.2);
     for (let i = 0; i < 12; i += 1) {
@@ -338,6 +353,20 @@ export class CanvasRenderer {
   }
 
   private drawMechaSkeleton(model: RenderModel, battle = false): void {
+    if (this.assets.hero.complete && this.assets.hero.naturalWidth > 0) {
+      const scale = battle ? 1.05 : 0.82;
+      const width = 210 * scale;
+      const height = 315 * scale;
+      const x = battle ? 180 - width / 2 : 180 - width / 2;
+      const y = battle ? 176 : 154;
+      this.ctx.save();
+      this.ctx.shadowBlur = battle ? 28 : 18;
+      this.ctx.shadowColor = model.overdrive ? PALETTE.yellow : PALETTE.cyan;
+      this.ctx.drawImage(this.assets.hero, x, y, width, height);
+      this.ctx.restore();
+      return;
+    }
+
     const ctx = this.ctx;
     const equipped = Object.values(model.equipped).filter(Boolean) as EquippedItem[];
     const best = equipped.find((item) => item.fused);
@@ -445,7 +474,11 @@ export class CanvasRenderer {
   private drawShareCardPreview(model: RenderModel, best?: EquippedItem): void {
     this.drawNeonPanel(48, 162, 264, 330, best?.color ?? PALETTE.purple, 10);
     this.drawCenteredText("分享卡", 180, 194, 18, PALETTE.cyan, "900");
-    this.drawMechaPortrait(best, 180, 295, 1);
+    if (this.assets.hero.complete && this.assets.hero.naturalWidth > 0) {
+      this.ctx.drawImage(this.assets.hero, 70, 204, 220, 250);
+    } else {
+      this.drawMechaPortrait(best, 180, 295, 1);
+    }
     this.drawCenteredText(best?.name ?? "未命名拼装物", 180, 416, 23, PALETTE.yellow, "900");
     this.drawCenteredText(`战力 ${Math.max(model.maxDps, 999999).toExponential(2)}`, 180, 446, 15, PALETTE.white, "900");
     this.drawCenteredText(`Combo x${model.maxCombo || 47} · 融合 ${model.fusionCount} 次`, 180, 470, 13, PALETTE.cyan, "800");
@@ -509,6 +542,20 @@ export class CanvasRenderer {
   }
 
   private drawWeaponShape(label: string, x: number, y: number, radius: number, color: string): void {
+    const weaponIndex = this.weaponIndex(label);
+    if (weaponIndex >= 0 && this.assets.weapons.complete && this.assets.weapons.naturalWidth > 0) {
+      const sw = this.assets.weapons.naturalWidth / 2;
+      const sh = this.assets.weapons.naturalHeight / 2;
+      const sx = (weaponIndex % 2) * sw;
+      const sy = Math.floor(weaponIndex / 2) * sh;
+      this.ctx.save();
+      this.ctx.shadowBlur = 18;
+      this.ctx.shadowColor = color;
+      this.ctx.drawImage(this.assets.weapons, sx, sy, sw, sh, x - radius * 1.6, y - radius * 1.6, radius * 3.2, radius * 3.2);
+      this.ctx.restore();
+      return;
+    }
+
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(x, y);
@@ -783,6 +830,15 @@ export class CanvasRenderer {
   }
 
   private drawCardMonster(ctx: CanvasRenderingContext2D, item: EquippedItem | undefined, x: number, y: number, size: number): void {
+    if (this.assets.hero.complete && this.assets.hero.naturalWidth > 0) {
+      ctx.save();
+      ctx.shadowBlur = 70;
+      ctx.shadowColor = item?.color ?? PALETTE.cyan;
+      ctx.drawImage(this.assets.hero, x - size * 0.46, y - size * 0.7, size * 0.92, size * 1.28);
+      ctx.restore();
+      return;
+    }
+
     ctx.save();
     ctx.translate(x, y);
     ctx.shadowBlur = 70;
@@ -855,5 +911,36 @@ export class CanvasRenderer {
 
   private distance(x1: number, y1: number, x2: number, y2: number): number {
     return Math.hypot(x1 - x2, y1 - y2);
+  }
+
+  private loadImage(src: string): HTMLImageElement {
+    const image = new Image();
+    image.src = src;
+    return image;
+  }
+
+  private drawCoverImage(image: HTMLImageElement, x: number, y: number, w: number, h: number): void {
+    const imageRatio = image.naturalWidth / image.naturalHeight;
+    const boxRatio = w / h;
+    let sx = 0;
+    let sy = 0;
+    let sw = image.naturalWidth;
+    let sh = image.naturalHeight;
+    if (imageRatio > boxRatio) {
+      sw = image.naturalHeight * boxRatio;
+      sx = (image.naturalWidth - sw) / 2;
+    } else {
+      sh = image.naturalWidth / boxRatio;
+      sy = (image.naturalHeight - sh) / 2;
+    }
+    this.ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
+  }
+
+  private weaponIndex(label: string): number {
+    if (label.includes("炎") || label.includes("火")) return 0;
+    if (label.includes("磁") || label.includes("炮")) return 1;
+    if (label.includes("鱼")) return 2;
+    if (label.includes("污") || label.includes("咒") || label.includes("K")) return 3;
+    return -1;
   }
 }
