@@ -2,6 +2,27 @@ import { BALANCE, createInitialRunState, FUSION_RULES, PART_DEFS, SLOT_ORDER } f
 import type { EquippedItem, GamePhase, MuseumRecord, PartDef, RunState, SlotId } from "./types";
 import { CanvasRenderer, type ButtonId, type RenderModel } from "./render/CanvasRenderer";
 import { createEquippedPart, createEquippedWeapon, estimateBuildPower, simulateCombat } from "./systems/CombatSystem";
+import {
+  activateEncounterShield,
+  aimEncounterTarget,
+  burstEncounterTarget,
+  createCombatEncounter as createEncounterState,
+  tapEncounterTarget,
+  tickCombatEncounter,
+  type CombatEncounterState,
+  type EncounterEvent,
+  type EncounterResult
+} from "./systems/CombatEncounterSystem";
+import {
+  combatInputToMultipliers,
+  createCombatInputState,
+  manualStrike as recordManualStrikeInput,
+  triggerAim as recordCombatAim,
+  triggerBurst as recordCombatBurst,
+  triggerShield as recordCombatShield,
+  updateCombatInput,
+  type CombatInputState
+} from "./systems/CombatInputSystem";
 import { fuseParts } from "./systems/FusionSystem";
 import { drawLootRewards } from "./systems/LootSystem";
 import { MuseumSystem } from "./systems/MuseumSystem";
@@ -18,6 +39,15 @@ interface FloatingText {
   text: string;
   ttl: number;
   color: string;
+}
+
+interface CombatDamageText {
+  text: string;
+  x: number;
+  y: number;
+  ttl: number;
+  color: string;
+  size: number;
 }
 
 interface Projectile {
@@ -73,11 +103,12 @@ export class GameApp {
   private floatingTexts: FloatingText[] = [];
   private projectiles: Projectile[] = [];
   private overdrive = false;
-  private combatEnergy = 0;
-  private combatFocusMs = 0;
-  private combatShieldMs = 0;
-  private targetLockMs = 0;
-  private combatActionScore = 0;
+  private combatInput: CombatInputState = createCombatInputState();
+  private combatEncounter?: CombatEncounterState;
+  private combatLastEvents: EncounterEvent[] = [];
+  private combatDamageTexts: CombatDamageText[] = [];
+  private combatHitFlash = 0;
+  private manualAim?: { x: number; y: number; ttl: number };
   private shareImageDataUrl = "";
   private animationHandle = 0;
   private tutorial = true;
@@ -193,22 +224,28 @@ export class GameApp {
     this.enterPhase("combat");
     this.projectiles = this.createProjectiles();
     this.floatingTexts = [];
-    this.combatEnergy = Math.max(this.combatEnergy, 24);
-    this.combatFocusMs = 0;
-    this.combatShieldMs = 0;
-    this.targetLockMs = 900;
-    this.combatActionScore = 0;
+    this.combatInput = createCombatInputState({ energy: 24, targetId: "minion-1", targetLockRemainingMs: 900 });
+    this.combatEncounter = this.createCombatEncounter();
+    this.combatLastEvents = [];
+    this.combatDamageTexts = [];
+    this.combatHitFlash = 0;
+    this.manualAim = undefined;
   }
 
   private finishCombat(): void {
     const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
     const summary = simulateCombat(equipped);
-    const actionDpsBonus = Math.round(this.combatActionScore * 36 + (this.overdrive ? summary.maxDps * 0.22 : 0));
-    const actionComboBonus = Math.floor(this.combatActionScore / 8);
+    const encounterScore =
+      this.combatInput.actionScore +
+      (this.combatEncounter?.combo ?? 0) * 3 +
+      Math.floor((this.combatEncounter?.dpsBonus ?? 0) / 50);
+    const actionDpsBonus = Math.round(encounterScore * 36 + (this.overdrive ? summary.maxDps * 0.22 : 0));
+    const actionComboBonus = Math.floor(encounterScore / 8);
     this.run.maxDps = Math.max(summary.maxDps + actionDpsBonus, this.run.maxDps);
     this.run.maxCombo = Math.max(summary.maxCombo + actionComboBonus, this.run.maxCombo);
     this.overdrive = this.overdrive || summary.overdriveTriggered;
-    const clutchVictory = this.combatActionScore >= 42 && this.run.maxCombo >= 18;
+    const bossDefeated = (this.combatEncounter?.boss.hp ?? 1) <= 0;
+    const clutchVictory = bossDefeated || (encounterScore >= 42 && this.run.maxCombo >= 18);
     this.run.result = summary.result === "victory" || clutchVictory ? "victory" : "death";
     this.enterPhase("result");
     this.shareImageDataUrl = this.renderer.createShareCard(this.renderModel());
@@ -284,23 +321,40 @@ export class GameApp {
         angle: projectile.angle + (dt / 1000) * projectile.speed,
         radius: 30 + ((projectile.radius + dt * 0.12) % 150)
       }));
+      this.combatDamageTexts = this.combatDamageTexts
+        .map((item) => ({ ...item, ttl: item.ttl - dt, y: item.y - dt * 0.028 }))
+        .filter((item) => item.ttl > 0)
+        .slice(-12);
+      this.combatHitFlash = Math.max(0, this.combatHitFlash - dt);
 
       const progress = this.phaseElapsed / PHASE_DURATION.combat;
       const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
       const comboCeiling = 8 + equippedCount * 5 + this.run.fusionCount * 7;
       const liveDps = this.estimateLiveDps();
-      this.combatEnergy = Math.min(100, this.combatEnergy + (dt / 1000) * (2.1 + equippedCount * 0.24));
-      this.combatFocusMs = Math.max(0, this.combatFocusMs - dt);
-      this.combatShieldMs = Math.max(0, this.combatShieldMs - dt);
-      this.targetLockMs = Math.max(0, this.targetLockMs - dt);
-      const focusMultiplier = this.combatFocusMs > 0 ? 1.85 : 1;
-      const shieldMultiplier = this.combatShieldMs > 0 ? 1.12 : 1;
-      this.run.maxCombo = Math.max(this.run.maxCombo, Math.floor(progress * comboCeiling * focusMultiplier));
+      this.combatInput = updateCombatInput(this.combatInput, dt);
+      this.combatInput = {
+        ...this.combatInput,
+        energy: Math.min(this.combatInput.maxEnergy, this.combatInput.energy + (dt / 1000) * (2.1 + equippedCount * 0.24))
+      };
+      if (this.combatEncounter) {
+        this.applyEncounterResult(tickCombatEncounter(this.combatEncounter, dt), false);
+      }
+      if (this.manualAim) {
+        this.manualAim = { ...this.manualAim, ttl: this.manualAim.ttl - dt };
+        if (this.manualAim.ttl <= 0) this.manualAim = undefined;
+      }
+      const inputMultipliers = combatInputToMultipliers(this.combatInput);
+      const focusMultiplier = inputMultipliers.damage * inputMultipliers.actionScore;
+      const shieldMultiplier = this.combatInput.shield.remainingMs > 0 || (this.combatEncounter?.shieldRemainingMs ?? 0) > 0 ? 1.12 : 1;
+      this.run.maxCombo = Math.max(this.run.maxCombo, this.combatEncounter?.combo ?? 0, Math.floor(progress * comboCeiling * focusMultiplier));
       this.run.maxDps = Math.max(
         this.run.maxDps,
-        Math.floor(liveDps * (0.72 + progress * 1.45) * (this.overdrive ? 1.8 : 1) * focusMultiplier * shieldMultiplier)
+        Math.floor(
+          liveDps * (0.72 + progress * 1.45) * (this.overdrive ? 1.8 : 1) * focusMultiplier * shieldMultiplier +
+            (this.combatEncounter?.dpsBonus ?? 0) * 12
+        )
       );
-      if (!this.overdrive && (this.phaseElapsed > 18_000 || this.run.maxCombo >= 18)) {
+      if (!this.overdrive && (this.phaseElapsed > 18_000 || this.run.maxCombo >= 18 || (this.combatEncounter?.boss.hp ?? 1) <= 0)) {
         this.overdrive = true;
         this.floatingTexts.push({ text: "超载！所有零件频率翻倍", ttl: 1300, color: "#ffef6e" });
       }
@@ -323,11 +377,21 @@ export class GameApp {
       drag: this.drag,
       floatingTexts: this.floatingTexts,
       projectiles: this.projectiles,
+      combatEncounter: this.combatEncounter ? tickCombatEncounter(this.combatEncounter, 0).snapshot : undefined,
+      combatEvents: this.combatLastEvents,
+      combatDamageTexts: this.combatDamageTexts,
+      combatHitFlash: this.combatHitFlash / 240,
+      manualAim: this.manualAim
+        ? { x: this.manualAim.x, y: this.manualAim.y, intensity: Math.min(1, this.manualAim.ttl / 420) }
+        : undefined,
       overdrive: this.overdrive,
-      combatEnergy: this.combatEnergy,
-      combatFocus: Math.min(1, this.combatFocusMs / 4200),
-      combatShield: Math.min(1, this.combatShieldMs / 5200),
-      targetLock: Math.min(1, this.targetLockMs / 900),
+      combatEnergy: this.combatInput.energy,
+      combatFocus: Math.min(1, this.combatInput.focus.remainingMs / this.combatInput.focus.durationMs),
+      combatShield: Math.max(
+        Math.min(1, this.combatInput.shield.remainingMs / this.combatInput.shield.durationMs),
+        Math.min(1, (this.combatEncounter?.shieldRemainingMs ?? 0) / 3000)
+      ),
+      targetLock: Math.min(1, this.combatInput.targetLock.remainingMs / this.combatInput.targetLock.durationMs),
       maxCombo: this.run.maxCombo,
       maxDps: this.run.maxDps,
       fusionCount: this.run.fusionCount,
@@ -558,6 +622,10 @@ export class GameApp {
       this.triggerCombatShield();
       return;
     }
+    if (button === "rerollPreview") {
+      this.floatingTexts.push({ text: "掉落只显示 SR / SSR / UR，不再出现 Common", ttl: 1100, color: "#12f4ff" });
+      return;
+    }
     if (button === "autoEquip") {
       if (this.run.inventory.length === 0) {
         this.floatingTexts.push({ text: "零件栏已空，拖已装零件可继续调整", ttl: 1100, color: "#ffffff" });
@@ -612,17 +680,126 @@ export class GameApp {
     }[slotId];
   }
 
+  private createCombatEncounter(): CombatEncounterState {
+    const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
+    const buildPressure = Math.max(1, estimateBuildPower(equipped) / 900);
+    const fusionPressure = 1 + this.run.fusionCount * 0.22;
+
+    return createEncounterState({
+      boss: {
+        id: "boss",
+        maxHp: Math.round(760 * fusionPressure + buildPressure * 180),
+        weakness: "burst",
+        counterDamage: Math.round(24 + buildPressure * 8),
+        counterIntervalMs: 1500
+      },
+      minions: [
+        { id: "minion-1", maxHp: 92, weakness: "tap", counterDamage: 9, counterIntervalMs: 1900 },
+        { id: "minion-2", maxHp: 116, weakness: "aim", counterDamage: 12, counterIntervalMs: 2100 },
+        { id: "minion-3", maxHp: 138, weakness: "burst", counterDamage: 14, counterIntervalMs: 2300 }
+      ],
+      autoDps: Math.max(28, this.estimateLiveDps() / 95)
+    });
+  }
+
+  private applyEncounterResult(result: EncounterResult, showHitText: boolean): void {
+    this.combatEncounter = result.state;
+    const visibleEvents = showHitText
+      ? result.events
+      : result.events.filter((event) => event.type === "counter" || event.type === "death" || event.type === "shield");
+    if (visibleEvents.length > 0) {
+      this.combatLastEvents = visibleEvents;
+    }
+
+    if (result.comboGain > 0) {
+      this.run.maxCombo += result.comboGain;
+    }
+    if (result.dpsBonus > 0) {
+      this.run.maxDps += Math.round(result.dpsBonus * (7 + this.run.fusionCount * 1.5));
+    }
+
+    for (const event of visibleEvents) {
+      if (event.type === "hit" && event.damage > 0) {
+        const point = this.combatTargetPoint(event.targetId);
+        this.combatHitFlash = 240;
+        this.combatDamageTexts.push({
+          text: `${event.weakness ? "弱点 " : ""}-${this.formatCombatDamage(event.damage)}`,
+          x: point.x + (event.source === "burst" ? 8 : 0),
+          y: point.y - 34,
+          ttl: event.source === "burst" ? 760 : 560,
+          color: event.weakness ? "#ffe329" : event.source === "tap" ? "#12f4ff" : "#ff2bd6",
+          size: event.source === "burst" ? 19 : 15
+        });
+      }
+      if (event.type === "death") {
+        const point = this.combatTargetPoint(event.targetId);
+        this.combatDamageTexts.push({
+          text: "击破!",
+          x: point.x,
+          y: point.y,
+          ttl: 780,
+          color: "#ffe329",
+          size: 18
+        });
+      }
+      if (event.type === "counter") {
+        this.combatDamageTexts.push({
+          text: event.mitigated ? `护盾 -${event.damage}` : `反击 -${event.damage}`,
+          x: 112,
+          y: 322,
+          ttl: 620,
+          color: event.mitigated ? "#b9ffcf" : "#ff3159",
+          size: 13
+        });
+      }
+    }
+    this.combatDamageTexts = this.combatDamageTexts.slice(-12);
+  }
+
+  private combatTargetAt(point: { x: number; y: number }): string {
+    const aliveIds = [
+      this.combatEncounter?.boss.hp ? "boss" : undefined,
+      ...(this.combatEncounter?.minions.filter((minion) => minion.hp > 0).map((minion) => minion.id) ?? [])
+    ].filter((id): id is string => Boolean(id));
+    const candidates = (aliveIds.length > 0 ? aliveIds : ["boss"]).map((id) => ({
+      id,
+      point: this.combatTargetPoint(id)
+    }));
+    const nearest = candidates.reduce((best, candidate) => {
+      const distance = (candidate.point.x - point.x) ** 2 + (candidate.point.y - point.y) ** 2;
+      return distance < best.distance ? { id: candidate.id, distance } : best;
+    }, { id: this.combatEncounter?.targetId ?? "boss", distance: Number.POSITIVE_INFINITY });
+
+    return point.x > 180 && point.y > 170 && point.y < 505 ? nearest.id : this.combatEncounter?.targetId ?? "boss";
+  }
+
+  private combatTargetPoint(targetId?: string | null): { x: number; y: number } {
+    return {
+      boss: { x: 260, y: 276 },
+      "minion-1": { x: 288, y: 358 },
+      "minion-2": { x: 226, y: 418 },
+      "minion-3": { x: 306, y: 442 }
+    }[targetId ?? "boss"] ?? { x: 260, y: 276 };
+  }
+
+  private formatCombatDamage(value: number): string {
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+    return Math.max(1, Math.round(value)).toString();
+  }
+
   private manualStrike(point: { x: number; y: number }): void {
     const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
     if (equippedCount === 0) return;
+    const targetId = this.combatTargetAt(point);
+    const targetPoint = this.combatTargetPoint(targetId);
     const hitEnemySide = point.x > 190 && point.y > 170 && point.y < 500;
-    const comboGain = hitEnemySide ? 2 + this.run.fusionCount : 1;
-    const dpsGain = (hitEnemySide ? 180 : 70) * equippedCount * (1 + this.run.fusionCount * 0.45);
-    this.run.maxCombo += comboGain;
-    this.run.maxDps += Math.round(dpsGain);
-    this.combatActionScore += hitEnemySide ? 4 : 1;
-    this.combatEnergy = Math.min(100, this.combatEnergy + (hitEnemySide ? 9 : 3));
-    this.targetLockMs = hitEnemySide ? 900 : Math.max(this.targetLockMs, 360);
+    this.combatInput = recordManualStrikeInput(this.combatInput, targetId);
+    if (this.combatEncounter) {
+      this.applyEncounterResult(tapEncounterTarget(this.combatEncounter, targetId), true);
+    }
+    this.manualAim = { x: hitEnemySide ? point.x : targetPoint.x, y: hitEnemySide ? point.y : targetPoint.y, ttl: 420 };
+    this.run.maxCombo += hitEnemySide ? 1 + this.run.fusionCount : 1;
+    this.run.maxDps += Math.round((hitEnemySide ? 120 : 42) * equippedCount * (1 + this.run.fusionCount * 0.45));
     if (hitEnemySide && this.run.maxCombo >= 10) {
       this.overdrive = true;
     }
@@ -631,18 +808,36 @@ export class GameApp {
 
   private triggerCombatAim(): void {
     if (this.run.phase !== "combat") return;
-    this.manualStrike({ x: 260, y: 286 });
-    this.manualStrike({ x: 262, y: 310 });
+    const targetId = this.combatEncounter?.targetId ?? "boss";
+    const nextInput = recordCombatAim(this.combatInput, targetId);
+    if (nextInput === this.combatInput) {
+      this.floatingTexts.push({ text: "能量不足，先点敌人蓄能", ttl: 800, color: "#ffffff" });
+      return;
+    }
+    this.combatInput = nextInput;
+    if (this.combatEncounter) {
+      this.applyEncounterResult(aimEncounterTarget(this.combatEncounter, targetId), true);
+    }
+    const point = this.combatTargetPoint(targetId);
+    this.manualAim = { ...point, ttl: 520 };
     this.floatingTexts.push({ text: "弱点锁定：手动集火", ttl: 650, color: "#12f4ff" });
   }
 
   private triggerCombatBurst(): void {
     if (this.run.phase !== "combat") return;
-    if (!this.spendCombatEnergy(42, "能量不足，先点敌人锁定")) return;
+    const targetId = this.combatEncounter?.targetId ?? "boss";
+    const nextInput = recordCombatBurst(this.combatInput, targetId);
+    if (nextInput === this.combatInput) {
+      this.floatingTexts.push({ text: "能量不足，先点敌人锁定", ttl: 800, color: "#ffffff" });
+      return;
+    }
+    this.combatInput = nextInput;
     const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
-    this.combatFocusMs = 4200;
-    this.targetLockMs = 900;
-    this.combatActionScore += 14;
+    if (this.combatEncounter) {
+      this.applyEncounterResult(burstEncounterTarget(this.combatEncounter, targetId), true);
+    }
+    const point = this.combatTargetPoint(targetId);
+    this.manualAim = { ...point, ttl: 620 };
     this.run.maxCombo += 6 + this.run.fusionCount * 2;
     this.run.maxDps += Math.round((1400 + equippedCount * 520) * (1 + this.run.fusionCount * 0.55));
     this.overdrive = true;
@@ -652,30 +847,28 @@ export class GameApp {
 
   private triggerCombatShield(): void {
     if (this.run.phase !== "combat") return;
-    if (!this.spendCombatEnergy(28, "能量不足，继续攻击蓄能")) return;
-    this.combatShieldMs = 5200;
-    this.combatActionScore += 7;
+    const nextInput = recordCombatShield(this.combatInput);
+    if (nextInput === this.combatInput) {
+      this.floatingTexts.push({ text: "能量不足，继续攻击蓄能", ttl: 800, color: "#ffffff" });
+      return;
+    }
+    this.combatInput = nextInput;
+    if (this.combatEncounter) {
+      this.applyEncounterResult(activateEncounterShield(this.combatEncounter), true);
+    }
     this.run.maxCombo += 3;
     this.run.maxDps += 460 + this.run.fusionCount * 180;
     this.floatingTexts.push({ text: "护盾稳态：连击不断", ttl: 900, color: "#b9ffcf" });
     navigator.vibrate?.(40);
   }
 
-  private spendCombatEnergy(cost: number, failureText: string): boolean {
-    if (this.combatEnergy < cost) {
-      this.floatingTexts.push({ text: failureText, ttl: 800, color: "#ffffff" });
-      return false;
-    }
-    this.combatEnergy -= cost;
-    return true;
-  }
-
   private resetCombatInput(): void {
-    this.combatEnergy = 0;
-    this.combatFocusMs = 0;
-    this.combatShieldMs = 0;
-    this.targetLockMs = 0;
-    this.combatActionScore = 0;
+    this.combatInput = createCombatInputState();
+    this.combatEncounter = undefined;
+    this.combatLastEvents = [];
+    this.combatDamageTexts = [];
+    this.combatHitFlash = 0;
+    this.manualAim = undefined;
   }
 
   private estimateLiveDps(): number {

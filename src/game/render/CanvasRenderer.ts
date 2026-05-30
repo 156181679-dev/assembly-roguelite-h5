@@ -1,6 +1,9 @@
 import { SLOT_ORDER } from "../data";
+import type { EncounterEvent, EncounterSnapshot } from "../systems/CombatEncounterSystem";
 import { rarityTier } from "../systems/LootSystem";
 import type { EquippedItem, GamePhase, MuseumRecord, PartDef, SlotId } from "../types";
+import { buildLootRevealLayout, type LootRevealAction, type LootRevealCard, type LootRevealLayout } from "./lootRevealLayout";
+import { getCombatRects } from "./posterLayout";
 
 export type ButtonId =
   | "continue"
@@ -25,7 +28,8 @@ export type ButtonId =
   | "tabMuseum"
   | "combatAim"
   | "combatBurst"
-  | "combatShield";
+  | "combatShield"
+  | "rerollPreview";
 
 interface DragRenderState {
   item: EquippedItem;
@@ -49,6 +53,15 @@ interface ProjectileRenderState {
   fused: boolean;
 }
 
+interface CombatDamageTextRenderState {
+  text: string;
+  x: number;
+  y: number;
+  ttl: number;
+  color: string;
+  size: number;
+}
+
 export interface RenderModel {
   phase: GamePhase;
   round: number;
@@ -60,6 +73,11 @@ export interface RenderModel {
   drag?: DragRenderState;
   floatingTexts: FloatingTextRenderState[];
   projectiles: ProjectileRenderState[];
+  combatEncounter?: EncounterSnapshot;
+  combatEvents: EncounterEvent[];
+  combatDamageTexts: CombatDamageTextRenderState[];
+  combatHitFlash: number;
+  manualAim?: { x: number; y: number; intensity: number };
   overdrive: boolean;
   combatEnergy: number;
   combatFocus: number;
@@ -534,55 +552,122 @@ export class CanvasRenderer {
   }
 
   private drawTopBrand(model: RenderModel): void {
-    this.drawText("拼装狂潮", 18, 42, 31, PALETTE.yellow, "900");
-    this.drawText("融合肉鸽", 182, 42, 24, PALETTE.white, "900");
-    this.drawText(`第 ${model.round}/3 轮 · ${this.phaseName(model.phase)}`, 20, 67, 13, PALETTE.cyan, "800");
-    this.drawNeonPanel(228, 24, 108, 42, PALETTE.purple, 8);
-    this.drawCenteredText("60秒", 282, 51, 23, PALETTE.yellow, "900");
+    this.drawText("拼装狂潮", 18, 35, 26, PALETTE.yellow, "900");
+    this.drawText("融合肉鸽", 20, 58, 15, PALETTE.white, "900");
+    this.drawText(`第 ${model.round}/3 轮 · ${this.phaseName(model.phase)}`, 118, 58, 12, PALETTE.cyan, "800");
+    this.drawNeonPanel(246, 18, 92, 42, PALETTE.purple, 8);
+    this.drawCenteredText("60秒", 292, 45, 22, PALETTE.yellow, "900");
     this.ctx.fillStyle = "rgba(255,255,255,0.18)";
-    this.ctx.fillRect(20, 78, 318, 7);
+    this.ctx.fillRect(20, 76, 318, 6);
     this.ctx.fillStyle = model.overdrive ? PALETTE.yellow : PALETTE.cyan;
-    this.ctx.fillRect(20, 78, 318 * model.phaseProgress, 7);
+    this.ctx.fillRect(20, 76, 318 * model.phaseProgress, 6);
   }
 
   private drawLoot(model: RenderModel): void {
-    this.drawNeonPanel(18, 101, 324, 452, PALETTE.purple, 14);
-    this.drawCenteredText("1. 补给开箱", 180, 133, 23, PALETTE.white, "900");
+    this.drawNeonPanel(18, 101, 324, 486, PALETTE.purple, 14);
     this.drawLootMachine(model);
-    this.drawButton("continue", 101, 492, 158, 42, "开启补给箱");
-    this.drawPrimaryHint("本轮抽取 3 件零件，稀有度会影响战斗火力", 474);
   }
 
   private drawLootMachine(model: RenderModel): void {
-    const ctx = this.ctx;
-    this.drawNeonPanel(42, 158, 276, 92, PALETTE.cyan, 12);
-    this.drawCenteredText("本轮掉落预览", 180, 187, 17, PALETTE.cyan, "900");
-    this.drawCenteredText("SR / SSR / UR", 180, 218, 26, PALETTE.yellow, "900");
-    ctx.save();
-    ctx.globalAlpha = 0.42;
-    for (let i = 0; i < 10; i += 1) {
-      this.drawSlash(48 + i * 28, 236, 30, i % 2 ? PALETTE.purple : PALETTE.cyan, 0.45);
-    }
-    ctx.restore();
-
-    model.rewards.slice(0, 3).forEach((part, index) => {
-      this.drawLootCard(part, 48 + index * 104, 270, 88, 126, index, model.phaseProgress);
-    });
-
-    this.drawNeonPanel(58, 414, 244, 36, PALETTE.purple, 8);
-    const labels = ["SR 基础火力", "SSR 稀有词条", "UR 催化融合"];
-    labels.forEach((label, index) => {
-      this.drawText(label, 74 + index * 82, 438, 10, index === 0 ? PALETTE.cyan : index === 1 ? PALETTE.yellow : PALETTE.purple, "900");
-    });
+    const layout = buildLootRevealLayout({ rewards: model.rewards, phaseProgress: model.phaseProgress });
+    this.drawLootReveal(layout, model);
   }
 
-  private drawLootCard(part: PartDef, x: number, y: number, w: number, h: number, index: number, progress: number): void {
-    const color = this.rarityColor(part);
-    const pulse = Math.sin(progress * Math.PI * 8 + index) * 2;
-    this.drawNeonPanel(x, y + pulse, w, h, color, 8);
-    this.drawCenteredText(this.rarityLabel(part), x + w / 2, y + 24 + pulse, 15, PALETTE.yellow, "900");
-    this.drawPartIcon(part, x + w / 2, y + 66 + pulse, 25);
-    this.drawCenteredText(part.name, x + w / 2, y + 106 + pulse, 10, PALETTE.white, "900");
+  private drawLootReveal(layout: LootRevealLayout, model: RenderModel): void {
+    const ctx = this.ctx;
+    this.drawCenteredText(layout.title.text, layout.title.x + layout.title.w / 2, layout.title.y + 25, layout.title.fontSize, layout.title.color, layout.title.weight);
+    this.drawCenteredText(
+      layout.subtitle.text,
+      layout.subtitle.x + layout.subtitle.w / 2,
+      layout.subtitle.y + 14,
+      layout.subtitle.fontSize,
+      layout.subtitle.color,
+      layout.subtitle.weight
+    );
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.shadowBlur = layout.theme.glow.burst;
+    ctx.shadowColor = layout.theme.colors.yellow;
+    layout.burst.rays.forEach((ray) => {
+      ctx.strokeStyle = ray.color;
+      ctx.lineWidth = ray.width;
+      ctx.beginPath();
+      ctx.moveTo(layout.burst.center.x, layout.burst.center.y);
+      ctx.lineTo(layout.burst.center.x + Math.cos(ray.angle) * ray.length, layout.burst.center.y + Math.sin(ray.angle) * ray.length);
+      ctx.stroke();
+    });
+    layout.burst.particles.forEach((particle) => {
+      ctx.globalAlpha = particle.alpha;
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+
+    this.drawLootChest(layout);
+    layout.cards.forEach((card) => {
+      const part = model.rewards.find((reward) => reward.id === card.partId);
+      this.drawLootRevealCard(card, part);
+    });
+    layout.rarityLegend.forEach((item) => {
+      this.drawText(item.tier, item.rect.x, item.rect.y + 13, 11, item.color, "900");
+      this.drawText(item.text, item.rect.x + 24, item.rect.y + 13, 9, PALETTE.white, "800");
+    });
+
+    this.drawCenteredText(layout.hint.text, layout.hint.x + layout.hint.w / 2, layout.hint.y + 17, layout.hint.fontSize, layout.hint.color, layout.hint.weight);
+    this.drawLootRevealAction(layout.actions.primary);
+    this.drawLootRevealAction(layout.actions.secondary);
+  }
+
+  private drawLootChest(layout: LootRevealLayout): void {
+    const ctx = this.ctx;
+    const { chest } = layout;
+    ctx.save();
+    ctx.shadowBlur = layout.theme.glow.chest;
+    ctx.shadowColor = chest.glowColor;
+    this.drawNeonPanel(chest.rect.x, chest.rect.y, chest.rect.w, chest.rect.h, PALETTE.yellow, 10);
+    ctx.fillStyle = "rgba(255,138,31,0.72)";
+    ctx.fillRect(chest.lidRect.x, chest.lidRect.y, chest.lidRect.w, chest.lidRect.h);
+    ctx.fillStyle = "rgba(255,227,41,0.92)";
+    ctx.fillRect(chest.coreRect.x, chest.coreRect.y, chest.coreRect.w, chest.coreRect.h);
+    ctx.strokeStyle = PALETTE.white;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(chest.coreRect.x, chest.coreRect.y, chest.coreRect.w, chest.coreRect.h);
+    ctx.restore();
+    this.drawCenteredText("SSR", chest.coreRect.x + chest.coreRect.w / 2, chest.coreRect.y + 31, 20, "#120817", "900");
+  }
+
+  private drawLootRevealCard(card: LootRevealCard, part?: PartDef): void {
+    const ctx = this.ctx;
+    const float = Math.sin(card.index + performance.now() / 260) * 1.8;
+    const y = card.rect.y + float;
+    this.drawNeonPanel(card.rect.x, y, card.rect.w, card.rect.h, card.tierColor, 8);
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.fillStyle = card.tierColor;
+    ctx.fillRect(card.rect.x + 5, y + 42, card.rect.w - 10, 1);
+    ctx.restore();
+    this.drawNeonPanel(card.badge.x, card.badge.y + float, card.badge.w, card.badge.h, card.tierColor, 6);
+    this.drawCenteredText(card.tier, card.badge.x + card.badge.w / 2, card.badge.y + 17 + float, 14, PALETTE.yellow, "900");
+    if (part) {
+      this.drawPartIcon(part, card.iconCenter.x, card.iconCenter.y + float, 28);
+    } else {
+      this.drawWeaponShape(card.icon, card.iconCenter.x, card.iconCenter.y + float, 26, card.accentColor);
+    }
+    this.drawCenteredText(card.categoryLabel, card.rect.x + card.rect.w / 2, y + 105, 9, card.tierColor, "900");
+    this.drawCenteredText(card.name, card.nameBox.x + card.nameBox.w / 2, card.nameBox.y + float + 16, card.nameBox.fontSize, card.nameBox.color, card.nameBox.weight);
+  }
+
+  private drawLootRevealAction(action: LootRevealAction): void {
+    if (action.id === "continue") {
+      this.drawButton(action.id, action.x, action.y, action.w, action.h, action.label);
+      return;
+    }
+    this.buttons.push(button(action.id, action.x, action.y, action.w, action.h));
+    this.drawNeonPanel(action.x, action.y, action.w, action.h, action.color, 8);
+    this.drawCenteredText(action.label, action.x + action.w / 2, action.y + action.h / 2 + 4, 12, action.textColor, "900");
   }
 
   private drawAssembly(model: RenderModel): void {
@@ -600,81 +685,101 @@ export class CanvasRenderer {
       this.drawButton("autoEquip", 30, 560, 126, 36, "一键装配");
       this.drawButton("continue", 204, 560, 132, 36, "去融合");
     }
-    this.drawPrimaryHint(model.phase === "assembly" ? "把零件拖到发光插槽" : "拖已装零件互撞，或直接点一键融合", 515);
+    this.drawPrimaryHint(model.phase === "assembly" ? "把零件拖到发光插槽" : "拖已装零件互撞，或直接点一键融合", 542);
   }
 
   private drawCombat(model: RenderModel): void {
+    const rects = getCombatRects();
     const pressure = Math.min(0.28, model.maxDps / 180_000) + Math.min(0.18, model.maxCombo * 0.006);
-    const bossHpRatio = Math.max(0.03, 1 - model.phaseProgress * (model.overdrive ? 0.86 : 0.68) - pressure);
+    const bossHpRatio = model.combatEncounter
+      ? Math.max(0, model.combatEncounter.boss.hp / model.combatEncounter.boss.maxHp)
+      : Math.max(0.03, 1 - model.phaseProgress * (model.overdrive ? 0.86 : 0.68) - pressure);
     const remainingSeconds = Math.max(0, Math.ceil(60 * (1 - model.phaseProgress)));
-    this.drawNeonPanel(14, 96, 332, 460, model.overdrive ? PALETTE.yellow : PALETTE.purple, 12);
+    this.drawNeonPanel(rects.panel.x, rects.panel.y, rects.panel.w, rects.panel.h, model.overdrive ? PALETTE.yellow : PALETTE.purple, 12);
     this.drawCombatArena(model);
     this.drawCombatHud(model, bossHpRatio, remainingSeconds);
     this.drawCombatEnemies(model, bossHpRatio);
     this.drawCombatHero(model);
     this.drawCombatWeaponMounts(model);
     this.drawCombatAttacks(model);
+    if (model.manualAim) this.drawManualAim(model.manualAim.x, model.manualAim.y, model.manualAim.intensity);
+    this.drawCombatCounters(model);
     this.drawCombatDamage(model);
     this.drawCombatControls(model);
   }
 
   private drawCombatArena(model: RenderModel): void {
     const ctx = this.ctx;
+    const { battlefield } = getCombatRects();
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(24, 148, 312, 356, 12);
+    ctx.roundRect(battlefield.x, battlefield.y, battlefield.w, battlefield.h, 12);
     ctx.clip();
 
-    const arena = ctx.createLinearGradient(24, 148, 336, 504);
+    const arena = ctx.createLinearGradient(battlefield.x, battlefield.y, battlefield.x + battlefield.w, battlefield.y + battlefield.h);
     arena.addColorStop(0, model.overdrive ? "#370818" : "#110b25");
     arena.addColorStop(0.54, "#071629");
     arena.addColorStop(1, "#05060d");
     ctx.fillStyle = arena;
-    ctx.fillRect(24, 148, 312, 356);
+    ctx.fillRect(battlefield.x, battlefield.y, battlefield.w, battlefield.h);
 
     ctx.globalAlpha = 0.36;
     ctx.strokeStyle = model.overdrive ? PALETTE.yellow : PALETTE.cyan;
     ctx.lineWidth = 1;
     for (let i = 0; i < 9; i += 1) {
-      const y = 198 + i * 34 + (model.phaseProgress * 42) % 34;
+      const y = battlefield.y + 34 + i * 34 + (model.phaseProgress * 42) % 34;
       ctx.beginPath();
-      ctx.moveTo(26, y);
-      ctx.lineTo(334, y - 22);
+      ctx.moveTo(battlefield.x + 2, y);
+      ctx.lineTo(battlefield.x + battlefield.w - 2, y - 22);
       ctx.stroke();
     }
     for (let i = 0; i < 7; i += 1) {
-      const x = 36 + i * 48;
+      const x = battlefield.x + 12 + i * 48;
       ctx.beginPath();
-      ctx.moveTo(x, 154);
-      ctx.lineTo(x - 66, 504);
+      ctx.moveTo(x, battlefield.y + 6);
+      ctx.lineTo(x - 66, battlefield.y + battlefield.h);
       ctx.stroke();
     }
     ctx.restore();
 
-    this.drawHalftone(254, 174, 3, 8, PALETTE.red, model.overdrive ? 0.5 : 0.3);
-    this.drawLightning(36, 182, 136, 246, PALETTE.cyan, 0.42);
-    this.drawLightning(328, 206, 260, 338, model.overdrive ? PALETTE.yellow : PALETTE.purple, 0.48);
+    this.drawHalftone(254, 206, 3, 8, PALETTE.red, model.overdrive ? 0.5 : 0.3);
+    this.drawLightning(36, 218, 136, 270, PALETTE.cyan, 0.42);
+    this.drawLightning(328, 236, 260, 362, model.overdrive ? PALETTE.yellow : PALETTE.purple, 0.48);
   }
 
   private drawCombatHud(model: RenderModel, bossHpRatio: number, remainingSeconds: number): void {
+    const { bossHud } = getCombatRects();
     this.drawCenteredText(model.overdrive ? "超载时刻！" : "4. 自动战斗", 180, 128, model.overdrive ? 28 : 23, model.overdrive ? PALETTE.yellow : PALETTE.white, "900");
-    this.drawNeonPanel(30, 142, 300, 42, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
-    this.drawText(`第 ${model.round} 波`, 44, 166, 13, PALETTE.white, "900");
-    this.drawCenteredText(`${remainingSeconds}s`, 176, 166, 16, PALETTE.yellow, "900");
-    this.drawText(`DPS ${this.formatMetric(Math.max(model.maxDps, 973))}`, 316, 166, 13, PALETTE.cyan, "900", "right");
-    this.drawBar(44, 176, 272, 6, bossHpRatio, PALETTE.red, "rgba(255,255,255,0.18)");
-    this.drawBar(44, 187, 130, 5, model.combatEnergy / 100, PALETTE.yellow, "rgba(255,255,255,0.16)");
-    this.drawText(`能量 ${Math.floor(model.combatEnergy)}`, 180, 193, 10, PALETTE.yellow, "900");
-    this.drawCenteredText("点敌人锁定弱点，蓄能后释放技能", 198, 205, 10, "rgba(255,255,255,0.78)", "800");
+    this.drawNeonPanel(bossHud.x, bossHud.y, bossHud.w, bossHud.h, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
+    this.drawText(`第 ${model.round} 波`, bossHud.x + 14, bossHud.y + 21, 13, PALETTE.white, "900");
+    this.drawCenteredText(`${remainingSeconds}s`, bossHud.x + bossHud.w / 2, bossHud.y + 21, 16, PALETTE.yellow, "900");
+    this.drawText(`DPS ${this.formatMetric(Math.max(model.maxDps, 973))}`, bossHud.x + bossHud.w - 14, bossHud.y + 21, 13, PALETTE.cyan, "900", "right");
+    this.drawBar(bossHud.x + 14, bossHud.y + 30, bossHud.w - 28, 6, bossHpRatio, PALETTE.red, "rgba(255,255,255,0.18)");
+    this.drawBar(bossHud.x + 14, bossHud.y + 39, 132, 5, model.combatEnergy / 100, PALETTE.yellow, "rgba(255,255,255,0.16)");
+    this.drawCenteredText(`能量 ${Math.floor(model.combatEnergy)}`, bossHud.x + 204, bossHud.y + 44, 10, PALETTE.yellow, "900");
   }
 
   private drawCombatEnemies(model: RenderModel, bossHpRatio: number): void {
-    this.drawMinion(288, 358, model.phaseProgress, PALETTE.purple);
-    this.drawMinion(226, 418, model.phaseProgress + 0.28, PALETTE.red);
-    this.drawMinion(306, 442, model.phaseProgress + 0.53, PALETTE.orange);
+    const minionPositions = [
+      { id: "minion-1", x: 288, y: 358, color: PALETTE.purple, offset: 0 },
+      { id: "minion-2", x: 226, y: 418, color: PALETTE.red, offset: 0.28 },
+      { id: "minion-3", x: 306, y: 442, color: PALETTE.orange, offset: 0.53 }
+    ];
+    minionPositions.forEach((position) => {
+      const state = model.combatEncounter?.minions.find((minion) => minion.id === position.id);
+      if (state && !state.alive) {
+        this.drawExplosion(position.x, position.y, position.color, 0.22);
+        return;
+      }
+      this.drawMinion(position.x, position.y, model.phaseProgress + position.offset, position.color);
+      if (state) this.drawMiniHpBar(position.x - 22, position.y + 20, 44, state.hp / state.maxHp, position.color);
+    });
     this.drawBoss(260, 276, model.overdrive);
-    if (model.targetLock > 0) this.drawTargetReticle(260, 276, model.targetLock);
-    this.drawCenteredText(`裂隙首领 ${Math.ceil(bossHpRatio * 100)}%`, 260, 200, 13, PALETTE.white, "900");
+    if (model.combatHitFlash > 0) this.drawHitFlash(this.combatTargetPoint(this.recentCombatTarget(model)), model.combatHitFlash);
+    const lockPoint = this.combatTargetPoint(model.combatEncounter?.targetId ?? "boss");
+    if (model.targetLock > 0) this.drawTargetReticle(lockPoint.x, lockPoint.y, model.targetLock);
+    this.drawMiniHpBar(206, 214, 108, bossHpRatio, model.overdrive ? PALETTE.yellow : PALETTE.red);
+    this.drawCenteredText(`裂隙首领 ${Math.ceil(bossHpRatio * 100)}%`, 260, 207, 12, PALETTE.white, "900");
   }
 
   private drawCombatHero(model: RenderModel): void {
@@ -814,26 +919,78 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
+  private drawManualAim(x: number, y: number, intensity: number): void {
+    const ctx = this.ctx;
+    const alpha = Math.max(0, Math.min(1, intensity));
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = alpha;
+    this.drawLaser(112, 396, x, y, PALETTE.yellow, 6);
+    ctx.strokeStyle = PALETTE.yellow;
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = PALETTE.yellow;
+    ctx.beginPath();
+    ctx.arc(x, y, 20 + (1 - alpha) * 20, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 34, y);
+    ctx.lineTo(x + 34, y);
+    ctx.moveTo(x, y - 34);
+    ctx.lineTo(x, y + 34);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawCombatCounters(model: RenderModel): void {
+    const counter = model.combatEvents.find((event) => event.type === "counter");
+    if (!counter || counter.type !== "counter") return;
+    const color = counter.mitigated ? "#b9ffcf" : PALETTE.red;
+    this.drawLaser(260, 276, 112, 394, color, counter.mitigated ? 3 : 5);
+    this.drawExplosion(112, 394, color, counter.mitigated ? 0.36 : 0.62);
+  }
+
   private drawCombatDamage(model: RenderModel): void {
     const baseDamage = Math.max(128, Math.floor(model.maxDps * 0.72 + model.fusionCount * 420 + model.maxCombo * 96));
-    for (let index = 0; index < 6; index += 1) {
+    const fallbackTargets = [
+      { x: 260, y: 276 },
+      { x: 288, y: 358 },
+      { x: 226, y: 418 }
+    ];
+    for (let index = 0; index < (model.combatDamageTexts.length > 0 ? 2 : 4); index += 1) {
       const t = (model.phaseProgress * 7.2 + index * 0.18) % 1;
       const critical = model.overdrive || index % 3 === 0;
       const damage = baseDamage * (critical ? 12 + index : 1 + index * 0.4);
-      const x = 228 + ((index * 37) % 88);
-      const y = 338 - t * 120 + Math.sin(index) * 10;
-      this.drawDamageNumber(`-${this.formatMetric(damage)}`, x, y, critical ? 20 : 15, critical ? PALETTE.yellow : PALETTE.purple);
+      const target = fallbackTargets[index % fallbackTargets.length];
+      const x = target.x + Math.sin(index * 1.8) * 20;
+      const y = target.y - 18 - t * 64 + Math.sin(index) * 10;
+      this.drawDamageNumber(`-${this.formatMetric(damage)}`, x, y, critical ? 17 : 13, critical ? PALETTE.yellow : PALETTE.purple);
     }
-    this.drawNeonPanel(58, 510, 244, 34, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
-    this.drawCenteredText(`COMBO x${Math.max(model.maxCombo, model.overdrive ? 56 : 1)}  秒伤 ${this.formatMetric(Math.max(model.maxDps, 973))}`, 180, 533, 15, model.overdrive ? PALETTE.yellow : PALETTE.cyan, "900");
+    model.combatDamageTexts.forEach((item) => {
+      const alpha = Math.max(0, Math.min(1, item.ttl / 620));
+      this.ctx.save();
+      this.ctx.globalAlpha = alpha;
+      this.drawDamageNumber(item.text, item.x, item.y, item.size, item.color);
+      this.ctx.restore();
+    });
+    if (model.combatEncounter) {
+      const aliveMinions = model.combatEncounter.minions.filter((minion) => minion.alive).length;
+      this.drawCenteredText(`目标 ${aliveMinions > 0 ? `${aliveMinions} 个护卫` : "首领暴露"}`, 180, 492, 10, "rgba(255,255,255,0.76)", "800");
+    }
+    this.drawNeonPanel(58, 508, 244, 28, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
+    const combo = Math.max(model.maxCombo, model.combatEncounter?.combo ?? 0, model.overdrive ? 56 : 1);
+    this.drawCenteredText(`COMBO x${combo}  秒伤 ${this.formatMetric(Math.max(model.maxDps, 973))}`, 180, 527, 14, model.overdrive ? PALETTE.yellow : PALETTE.cyan, "900");
     if (model.combatFocus > 0) this.drawCenteredText("集火中", 248, 228, 14, PALETTE.yellow, "900");
     if (model.combatShield > 0) this.drawCenteredText("护盾稳态", 108, 254, 12, "#b9ffcf", "900");
   }
 
   private drawCombatControls(model: RenderModel): void {
-    this.drawCombatSkillButton("combatAim", 38, 462, 82, 34, "锁定", "点射", PALETTE.cyan, true);
-    this.drawCombatSkillButton("combatBurst", 139, 462, 82, 34, "集火", "42能量", PALETTE.yellow, model.combatEnergy >= 42);
-    this.drawCombatSkillButton("combatShield", 240, 462, 82, 34, "护盾", "28能量", "#b9ffcf", model.combatEnergy >= 28);
+    const rects = getCombatRects();
+    this.drawNeonPanel(rects.commandBar.x, rects.commandBar.y, rects.commandBar.w, rects.commandBar.h, PALETTE.purple, 8);
+    const energyRatio = Math.max(0, Math.min(1, model.combatEnergy / 100));
+    this.drawCombatSkillButton("combatAim", rects.aimButton.x, rects.aimButton.y, rects.aimButton.w, rects.aimButton.h, "锁定", "10能量", PALETTE.cyan, model.combatEnergy >= 10, energyRatio);
+    this.drawCombatSkillButton("combatBurst", rects.burstButton.x, rects.burstButton.y, rects.burstButton.w, rects.burstButton.h, "集火", "42能量", PALETTE.yellow, model.combatEnergy >= 42, energyRatio);
+    this.drawCombatSkillButton("combatShield", rects.shieldButton.x, rects.shieldButton.y, rects.shieldButton.w, rects.shieldButton.h, "护盾", "28能量", "#b9ffcf", model.combatEnergy >= 28, energyRatio);
   }
 
   private drawCombatSkillButton(
@@ -845,7 +1002,8 @@ export class CanvasRenderer {
     label: string,
     subLabel: string,
     color: string,
-    enabled: boolean
+    enabled: boolean,
+    chargeRatio = 1
   ): void {
     this.buttons.push(button(id, x, y, w, h));
     const ctx = this.ctx;
@@ -860,6 +1018,9 @@ export class CanvasRenderer {
     ctx.roundRect(x, y, w, h, 7);
     ctx.fill();
     ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = enabled ? 0.72 : 0.32;
+    ctx.fillRect(x + 5, y + h - 6, (w - 10) * Math.max(0, Math.min(1, chargeRatio)), 3);
     ctx.restore();
     this.drawCenteredText(label, x + w / 2, y + 15, 13, enabled ? color : "rgba(255,255,255,0.62)", "900");
     this.drawCenteredText(subLabel, x + w / 2, y + 29, 9, enabled ? PALETTE.white : "rgba(255,255,255,0.44)", "800");
@@ -886,6 +1047,48 @@ export class CanvasRenderer {
     ctx.lineTo(x, y - radius + 8);
     ctx.moveTo(x, y + radius - 8);
     ctx.lineTo(x, y + radius + 10);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private combatTargetPoint(targetId?: string | null): { x: number; y: number } {
+    return {
+      boss: { x: 260, y: 276 },
+      "minion-1": { x: 288, y: 358 },
+      "minion-2": { x: 226, y: 418 },
+      "minion-3": { x: 306, y: 442 }
+    }[targetId ?? "boss"] ?? { x: 260, y: 276 };
+  }
+
+  private recentCombatTarget(model: RenderModel): string {
+    const hit = model.combatEvents.find((event) => event.type === "hit" || event.type === "death");
+    if (hit?.type === "hit" || hit?.type === "death") return hit.targetId;
+    return model.combatEncounter?.targetId ?? "boss";
+  }
+
+  private drawMiniHpBar(x: number, y: number, width: number, ratio: number, color: string): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
+    ctx.fillRect(x, y, width, 5);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, width * Math.max(0, Math.min(1, ratio)), 5);
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.strokeRect(x, y, width, 5);
+    ctx.restore();
+  }
+
+  private drawHitFlash(point: { x: number; y: number }, intensity: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.max(0, Math.min(1, intensity));
+    ctx.strokeStyle = PALETTE.yellow;
+    ctx.lineWidth = 5;
+    ctx.shadowBlur = 24;
+    ctx.shadowColor = PALETTE.yellow;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 34 + (1 - intensity) * 18, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -1553,15 +1756,15 @@ export class CanvasRenderer {
   }
 
   private drawPrimaryHint(text: string, y: number): void {
-    this.drawCenteredText(text, 180, y, 16, PALETTE.white, "900");
+    this.drawCenteredText(text, 180, y, 12, PALETTE.white, "900");
   }
 
   private drawFloatingTexts(model: RenderModel): void {
-    model.floatingTexts.slice(-3).forEach((message, index) => {
-      const alpha = Math.min(1, message.ttl / 700);
+    model.floatingTexts.slice(-1).forEach((message, index) => {
+      const alpha = Math.min(1, message.ttl / 600);
       this.ctx.globalAlpha = alpha;
-      this.drawNeonPanel(24, 92 + index * 28, 312, 24, message.color, 6);
-      this.drawCenteredText(message.text, 180, 110 + index * 28, 12, PALETTE.white, "900");
+      this.drawNeonPanel(34, 84 + index * 20, 292, 16, message.color, 4);
+      this.drawCenteredText(message.text, 180, 96 + index * 20, 9, PALETTE.white, "800");
       this.ctx.globalAlpha = 1;
     });
   }
