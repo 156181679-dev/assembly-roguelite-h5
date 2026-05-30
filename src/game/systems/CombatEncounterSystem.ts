@@ -76,6 +76,8 @@ export interface EncounterSnapshot {
   combo: number;
   dpsBonus: number;
   shieldRemainingMs: number;
+  nextCounterMs: number;
+  counterIntervalMs: number;
 }
 
 export interface EncounterResult {
@@ -164,7 +166,9 @@ const createResult = (
     targetId: state.targetId,
     combo: state.combo,
     dpsBonus: state.dpsBonus,
-    shieldRemainingMs: state.shieldRemainingMs
+    shieldRemainingMs: state.shieldRemainingMs,
+    nextCounterMs: state.nextCounterMs,
+    counterIntervalMs: state.boss.counterIntervalMs
   },
   events,
   targetId: state.targetId,

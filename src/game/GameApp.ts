@@ -158,7 +158,6 @@ export class GameApp {
       parts: PART_DEFS,
       ownedPartIds: this.run.ownedPartIds
     });
-    this.floatingTexts.push({ text: "点击补给机抽取本轮零件", ttl: 1500, color: "#ffffff" });
   }
 
   private startAdventure(): void {

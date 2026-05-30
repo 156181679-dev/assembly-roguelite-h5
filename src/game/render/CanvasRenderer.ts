@@ -677,6 +677,7 @@ export class CanvasRenderer {
     this.drawMechaSkeleton(model);
     this.drawSlotRings(model);
     this.drawInventory(model.inventory);
+    if (model.phase === "assembly") this.drawAssemblyGuide(model);
     if (model.phase === "fusion") {
       this.drawFusionFormula(model);
       this.drawButton("fuse", 30, 560, 126, 36, "一键融合");
@@ -685,7 +686,6 @@ export class CanvasRenderer {
       this.drawButton("autoEquip", 30, 560, 126, 36, "一键装配");
       this.drawButton("continue", 204, 560, 132, 36, "去融合");
     }
-    this.drawPrimaryHint(model.phase === "assembly" ? "把零件拖到发光插槽" : "拖已装零件互撞，或直接点一键融合", 542);
   }
 
   private drawCombat(model: RenderModel): void {
@@ -772,9 +772,12 @@ export class CanvasRenderer {
         return;
       }
       this.drawMinion(position.x, position.y, model.phaseProgress + position.offset, position.color);
+      this.drawWeakpointMarker(position.x + 18, position.y - 16, state?.weakness ?? "tap", position.color, state?.id === model.combatEncounter?.targetId);
       if (state) this.drawMiniHpBar(position.x - 22, position.y + 20, 44, state.hp / state.maxHp, position.color);
     });
     this.drawBoss(260, 276, model.overdrive);
+    this.drawWeakpointMarker(224, 250, model.combatEncounter?.boss.weakness ?? "burst", model.overdrive ? PALETTE.yellow : PALETTE.red, model.combatEncounter?.targetId === "boss");
+    if (model.combatEncounter) this.drawCounterWarning(model.combatEncounter);
     if (model.combatHitFlash > 0) this.drawHitFlash(this.combatTargetPoint(this.recentCombatTarget(model)), model.combatHitFlash);
     const lockPoint = this.combatTargetPoint(model.combatEncounter?.targetId ?? "boss");
     if (model.targetLock > 0) this.drawTargetReticle(lockPoint.x, lockPoint.y, model.targetLock);
@@ -962,7 +965,7 @@ export class CanvasRenderer {
       const critical = model.overdrive || index % 3 === 0;
       const damage = baseDamage * (critical ? 12 + index : 1 + index * 0.4);
       const target = fallbackTargets[index % fallbackTargets.length];
-      const x = target.x + Math.sin(index * 1.8) * 20;
+      const x = Math.max(56, Math.min(302, target.x + Math.sin(index * 1.8) * 20));
       const y = target.y - 18 - t * 64 + Math.sin(index) * 10;
       this.drawDamageNumber(`-${this.formatMetric(damage)}`, x, y, critical ? 17 : 13, critical ? PALETTE.yellow : PALETTE.purple);
     }
@@ -970,7 +973,7 @@ export class CanvasRenderer {
       const alpha = Math.max(0, Math.min(1, item.ttl / 620));
       this.ctx.save();
       this.ctx.globalAlpha = alpha;
-      this.drawDamageNumber(item.text, item.x, item.y, item.size, item.color);
+      this.drawDamageNumber(item.text, Math.max(52, Math.min(300, item.x)), item.y, item.size, item.color);
       this.ctx.restore();
     });
     if (model.combatEncounter) {
@@ -988,9 +991,29 @@ export class CanvasRenderer {
     const rects = getCombatRects();
     this.drawNeonPanel(rects.commandBar.x, rects.commandBar.y, rects.commandBar.w, rects.commandBar.h, PALETTE.purple, 8);
     const energyRatio = Math.max(0, Math.min(1, model.combatEnergy / 100));
+    const counterPressure = model.combatEncounter
+      ? 1 - Math.max(0, Math.min(1, model.combatEncounter.nextCounterMs / model.combatEncounter.counterIntervalMs))
+      : 0;
+    if (counterPressure > 0.62) {
+      this.drawCommandAlert(rects.shieldButton.x, rects.shieldButton.y, rects.shieldButton.w, rects.shieldButton.h, counterPressure);
+    }
     this.drawCombatSkillButton("combatAim", rects.aimButton.x, rects.aimButton.y, rects.aimButton.w, rects.aimButton.h, "锁定", "10能量", PALETTE.cyan, model.combatEnergy >= 10, energyRatio);
     this.drawCombatSkillButton("combatBurst", rects.burstButton.x, rects.burstButton.y, rects.burstButton.w, rects.burstButton.h, "集火", "42能量", PALETTE.yellow, model.combatEnergy >= 42, energyRatio);
     this.drawCombatSkillButton("combatShield", rects.shieldButton.x, rects.shieldButton.y, rects.shieldButton.w, rects.shieldButton.h, "护盾", "28能量", "#b9ffcf", model.combatEnergy >= 28, energyRatio);
+  }
+
+  private drawCommandAlert(x: number, y: number, w: number, h: number, pressure: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + pressure * 0.28;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = PALETTE.red;
+    ctx.strokeStyle = PALETTE.red;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(x - 3, y - 3, w + 6, h + 6, 10);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawCombatSkillButton(
@@ -1089,6 +1112,46 @@ export class CanvasRenderer {
     ctx.shadowColor = PALETTE.yellow;
     ctx.beginPath();
     ctx.arc(point.x, point.y, 34 + (1 - intensity) * 18, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawWeakpointMarker(
+    x: number,
+    y: number,
+    weakness: "tap" | "aim" | "burst",
+    color: string,
+    active = false
+  ): void {
+    const ctx = this.ctx;
+    const label = weakness === "tap" ? "点" : weakness === "aim" ? "锁" : "爆";
+    ctx.save();
+    ctx.shadowBlur = active ? 18 : 10;
+    ctx.shadowColor = active ? PALETTE.yellow : color;
+    ctx.fillStyle = active ? "rgba(255,227,41,0.9)" : "rgba(7,8,22,0.88)";
+    ctx.strokeStyle = active ? PALETTE.yellow : color;
+    ctx.lineWidth = active ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(x, y, active ? 13 : 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    this.drawCenteredText(label, x, y + 4, active ? 10 : 8, active ? "#141009" : PALETTE.white, "900");
+  }
+
+  private drawCounterWarning(encounter: EncounterSnapshot): void {
+    const ratio = 1 - Math.max(0, Math.min(1, encounter.nextCounterMs / encounter.counterIntervalMs));
+    if (ratio < 0.36) return;
+    const ctx = this.ctx;
+    const color = ratio > 0.72 ? PALETTE.red : PALETTE.orange;
+    ctx.save();
+    ctx.globalAlpha = 0.22 + ratio * 0.48;
+    ctx.strokeStyle = color;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(260, 276, 64, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
     ctx.stroke();
     ctx.restore();
   }
@@ -1246,6 +1309,26 @@ export class CanvasRenderer {
       this.drawNeonPanel(pos.x - 20, pos.y - 20, 40, 40, item.color, 6);
       this.drawItem(item, pos.x, pos.y, 14);
     });
+  }
+
+  private drawAssemblyGuide(model: RenderModel): void {
+    if (model.inventory.length === 0) return;
+    const openSlot = SLOT_ORDER.find((slotId) => !model.equipped[slotId]);
+    if (!openSlot) return;
+    const from = this.inventoryPosition(0);
+    const to = SLOT_POSITIONS[openSlot];
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.62 + Math.sin(model.phaseProgress * Math.PI * 10) * 0.14;
+    this.drawLaser(from.x + 8, from.y - 18, to.x, to.y, PALETTE.cyan, 3);
+    ctx.fillStyle = PALETTE.cyan;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = PALETTE.cyan;
+    ctx.beginPath();
+    ctx.arc(to.x, to.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawFusionFormula(model: RenderModel): void {

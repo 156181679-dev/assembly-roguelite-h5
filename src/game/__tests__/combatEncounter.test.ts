@@ -18,6 +18,8 @@ describe("combat encounter state", () => {
     const result = tapEncounterTarget(encounter, "minion-1");
 
     expect(result.snapshot.minions[0].hp).toBeLessThan(60);
+    expect(result.snapshot.nextCounterMs).toBeGreaterThan(0);
+    expect(result.snapshot.counterIntervalMs).toBeGreaterThan(0);
     expect(result.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "hit", targetId: "minion-1", source: "tap" })
