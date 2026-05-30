@@ -25,16 +25,32 @@ interface Projectile {
   radius: number;
   color: string;
   icon: string;
+  sourcePartId: string;
+  weaponId?: string;
+  fused: boolean;
   speed: number;
 }
 
 const PHASE_DURATION: Record<GamePhase, number> = {
+  launch: 999_000,
+  home: 999_000,
   loot: 5_000,
+  lootResult: 999_000,
   assembly: 12_000,
   fusion: 9_000,
+  fusionSuccess: 999_000,
   combat: BALANCE.combatDurationMs,
   result: 999_000,
-  museum: 999_000
+  museum: 999_000,
+  weaponDetail: 999_000,
+  graveyard: 999_000,
+  graveStart: 999_000,
+  share: 999_000,
+  shop: 999_000,
+  missions: 999_000,
+  achievements: 999_000,
+  settings: 999_000,
+  tutorial: 999_000
 };
 
 const getCanvasPoint = (event: PointerEvent, canvas: HTMLCanvasElement) => {
@@ -74,7 +90,7 @@ export class GameApp {
   }
 
   start(): void {
-    this.newRun();
+    this.enterPhase("launch");
     this.lastFrame = performance.now();
     this.animationHandle = requestAnimationFrame(this.tick);
   }
@@ -89,8 +105,8 @@ export class GameApp {
     this.overdrive = false;
     this.shareImageDataUrl = "";
     this.projectiles = [];
-    this.floatingTexts = [{ text: "点击轮盘，抽出你的第一批怪零件", ttl: 2600, color: "#ffffff" }];
-    this.enterLoot();
+    this.floatingTexts = [];
+    this.enterPhase("home");
   }
 
   private enterPhase(phase: GamePhase): void {
@@ -105,10 +121,26 @@ export class GameApp {
       parts: PART_DEFS,
       ownedPartIds: this.run.ownedPartIds
     });
+    this.floatingTexts.push({ text: "点击轮盘停止旋转，爆出本轮零件", ttl: 1800, color: "#ffffff" });
+  }
+
+  private startAdventure(): void {
+    this.run = createInitialRunState();
+    this.phaseElapsed = 0;
+    this.overdrive = false;
+    this.shareImageDataUrl = "";
+    this.projectiles = [];
+    this.floatingTexts = [];
+    this.enterLoot();
+  }
+
+  private showLootResult(): void {
+    if (this.run.phase !== "loot") return;
+    this.enterPhase("lootResult");
   }
 
   private claimLoot(): void {
-    if (this.run.phase !== "loot") return;
+    if (this.run.phase !== "lootResult") return;
     for (const part of this.lootRewards) {
       if (part.category === "catalyst") {
         this.floatingTexts.push({ text: "融合催化剂已装填：本轮会强制融合", ttl: 1600, color: "#fff6a3" });
@@ -124,15 +156,21 @@ export class GameApp {
   }
 
   private advanceFromAssembly(): void {
-    this.autoEquipIfEmpty();
+    if (!this.hasEquippedItems()) {
+      this.floatingTexts.push({ text: "先拖拽零件或点击一键装配", ttl: 1200, color: "#ffffff" });
+      return;
+    }
     this.enterPhase("fusion");
     this.floatingTexts.push({ text: "把两个已装零件拖到一起，任意组合都能融合", ttl: 1800, color: "#ffffff" });
   }
 
   private advanceFromFusion(): void {
-    const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
-    if (this.run.round >= 2 && this.run.fusionCount === 0 && equipped.length >= 2) {
-      this.performFusion(equipped[0], equipped[1]);
+    if (this.run.phase === "fusion") {
+      this.fuseBestAvailablePair(false);
+    }
+    if (!this.hasEquippedItems()) {
+      this.floatingTexts.push({ text: "没有装备，无法进入战斗", ttl: 1200, color: "#ffffff" });
+      return;
     }
 
     if (this.run.round >= BALANCE.roundsPerRun) {
@@ -145,7 +183,6 @@ export class GameApp {
   }
 
   private enterCombat(): void {
-    this.autoEquipIfEmpty();
     this.enterPhase("combat");
     this.projectiles = this.createProjectiles();
     this.floatingTexts.push({ text: "战斗开始：所有零件自动开火", ttl: 1500, color: "#fff" });
@@ -176,7 +213,7 @@ export class GameApp {
       maxCombo: this.run.maxCombo,
       fusionCount: this.run.fusionCount,
       result: this.run.result ?? "death",
-      shareImageDataUrl: this.shareImageDataUrl
+      shareImageDataUrl: ""
     };
   }
 
@@ -191,6 +228,10 @@ export class GameApp {
     }
   }
 
+  private hasEquippedItems(): boolean {
+    return Object.values(this.run.equipped).some(Boolean);
+  }
+
   private createProjectiles(): Projectile[] {
     const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
     return equipped.flatMap((item, index) => {
@@ -200,6 +241,9 @@ export class GameApp {
         radius: 32 + offset * 16,
         color: item.color,
         icon: item.icon,
+        sourcePartId: item.sourcePartIds[0],
+        weaponId: item.weaponId,
+        fused: item.fused,
         speed: item.fused ? 2.2 : 1.35
       }));
     });
@@ -235,11 +279,8 @@ export class GameApp {
       }
     }
 
-    if (this.phaseElapsed > PHASE_DURATION[this.run.phase]) {
-      if (this.run.phase === "loot") this.claimLoot();
-      else if (this.run.phase === "assembly") this.advanceFromAssembly();
-      else if (this.run.phase === "fusion") this.advanceFromFusion();
-      else if (this.run.phase === "combat") this.finishCombat();
+    if (this.phaseElapsed > PHASE_DURATION[this.run.phase] && this.run.phase === "combat") {
+      this.finishCombat();
     }
   }
 
@@ -276,7 +317,22 @@ export class GameApp {
     }
 
     if (this.run.phase === "loot") {
+      this.showLootResult();
+      return;
+    }
+
+    if (this.run.phase === "lootResult") {
       this.claimLoot();
+      return;
+    }
+
+    if (this.run.phase === "combat") {
+      this.finishCombat();
+      return;
+    }
+
+    if (this.run.phase === "fusionSuccess") {
+      this.advanceFromFusion();
       return;
     }
 
@@ -354,13 +410,106 @@ export class GameApp {
     this.run.fusedWeapons.push(weapon);
     this.run.fusionCount += 1;
     this.floatingTexts.push({ text: result.formulaText, ttl: 1800, color: result.weapon.color });
+    this.enterPhase("fusionSuccess");
     navigator.vibrate?.([40, 40, 70]);
   }
 
+  private fuseBestAvailablePair(showFailure = true): boolean {
+    const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
+    const candidates = equipped.filter((item) => !item.fused);
+    if (candidates.length < 2) {
+      if (showFailure) {
+        this.floatingTexts.push({ text: "至少装上两个未融合零件才能合成", ttl: 1100, color: "#ffffff" });
+      }
+      return false;
+    }
+
+    let best: { a: EquippedItem; b: EquippedItem; score: number } | undefined;
+    for (let left = 0; left < candidates.length - 1; left += 1) {
+      for (let right = left + 1; right < candidates.length; right += 1) {
+        const partA = PART_DEFS.find((part) => part.id === candidates[left].sourcePartIds[0]);
+        const partB = PART_DEFS.find((part) => part.id === candidates[right].sourcePartIds[0]);
+        if (!partA || !partB) continue;
+        const result = fuseParts(partA, partB, FUSION_RULES);
+        const typeScore = result.ruleType === "exact" ? 300 : result.ruleType === "tag" ? 200 : 100;
+        const score = typeScore + result.weapon.trigger.damage + result.weapon.effects.length * 8;
+        if (!best || score > best.score) {
+          best = { a: candidates[left], b: candidates[right], score };
+        }
+      }
+    }
+
+    if (!best) {
+      if (showFailure) {
+        this.floatingTexts.push({ text: "当前零件无法合成，换一组试试", ttl: 1100, color: "#ffffff" });
+      }
+      return false;
+    }
+
+    this.performFusion(best.a, best.b);
+    return true;
+  }
+
   private handleButton(button: ButtonId): void {
+    if (button === "start") {
+      this.startAdventure();
+      return;
+    }
+    if (button === "backHome") {
+      this.enterPhase("home");
+      return;
+    }
+    if (button === "shop") {
+      this.enterPhase("shop");
+      return;
+    }
+    if (button === "missions") {
+      this.enterPhase("missions");
+      return;
+    }
+    if (button === "achievements") {
+      this.enterPhase("achievements");
+      return;
+    }
+    if (button === "settings") {
+      this.enterPhase("settings");
+      return;
+    }
+    if (button === "graveStart") {
+      this.enterPhase("graveStart");
+      return;
+    }
+    if (button === "weaponDetail") {
+      this.enterPhase("weaponDetail");
+      return;
+    }
+    if (button === "tutorial") {
+      this.enterPhase("tutorial");
+      return;
+    }
+    if (button === "autoEquip") {
+      if (this.run.inventory.length === 0) {
+        this.floatingTexts.push({ text: "零件栏已空，拖已装零件可继续调整", ttl: 1100, color: "#ffffff" });
+        return;
+      }
+      this.autoEquipIfEmpty();
+      this.floatingTexts.push({ text: "已把库存零件装入空槽", ttl: 1100, color: "#b9ffcf" });
+      return;
+    }
+    if (button === "fuse") {
+      this.fuseBestAvailablePair();
+      return;
+    }
     if (button === "continue") {
       if (this.run.phase === "assembly") this.advanceFromAssembly();
       else if (this.run.phase === "fusion") this.advanceFromFusion();
+      else if (this.run.phase === "fusionSuccess") this.advanceFromFusion();
+      else if (this.run.phase === "loot") this.showLootResult();
+      else if (this.run.phase === "lootResult") this.claimLoot();
+      else if (this.run.phase === "launch") this.enterPhase("home");
+      else if (this.run.phase === "graveStart") this.startAdventure();
+      else if (this.run.phase === "tutorial") this.showLootResult();
+      else if (this.run.phase === "combat") this.finishCombat();
       return;
     }
     if (button === "restart") {
@@ -370,6 +519,10 @@ export class GameApp {
     }
     if (button === "museum") {
       this.enterPhase("museum");
+      return;
+    }
+    if (button === "share") {
+      this.enterPhase("share");
       return;
     }
     if (button === "result") {

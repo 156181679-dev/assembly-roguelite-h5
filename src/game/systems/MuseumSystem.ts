@@ -51,10 +51,17 @@ export class MuseumSystem {
   }
 
   save(record: MuseumRecord): MuseumRecord[] {
-    const records = [record, ...this.list().filter((item) => item.id !== record.id)]
+    const compactRecord = { ...record, shareImageDataUrl: "" };
+    const records = [compactRecord, ...this.list().filter((item) => item.id !== record.id)]
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, BALANCE.maxMuseumRecords);
-    this.storage.setItem(STORAGE_KEY, JSON.stringify(records));
+    try {
+      this.storage.setItem(STORAGE_KEY, JSON.stringify(records));
+    } catch {
+      this.storage.removeItem(STORAGE_KEY);
+      this.storage.setItem(STORAGE_KEY, JSON.stringify([compactRecord]));
+      return [compactRecord];
+    }
     return records;
   }
 

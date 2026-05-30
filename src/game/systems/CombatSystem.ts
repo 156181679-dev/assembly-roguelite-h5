@@ -23,6 +23,7 @@ export const createEquippedPart = (part: PartDef, slotId: SlotId): EquippedItem 
 
 export const createEquippedWeapon = (weapon: WeaponDef, slotId: SlotId, sourcePartIds: string[]): EquippedItem => ({
   uid: uid(weapon.id),
+  weaponId: weapon.id,
   sourcePartIds,
   name: weapon.name,
   slotId,

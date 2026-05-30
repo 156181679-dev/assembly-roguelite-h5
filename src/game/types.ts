@@ -14,7 +14,26 @@ export type EffectPrimitive =
 
 export type TargetingMode = "nearest" | "random" | "front" | "area";
 export type SlotId = "head" | "body" | "left_hand" | "right_hand" | "back" | "feet";
-export type GamePhase = "loot" | "assembly" | "fusion" | "combat" | "result" | "museum";
+export type GamePhase =
+  | "launch"
+  | "home"
+  | "loot"
+  | "lootResult"
+  | "assembly"
+  | "fusion"
+  | "fusionSuccess"
+  | "combat"
+  | "result"
+  | "museum"
+  | "weaponDetail"
+  | "graveyard"
+  | "graveStart"
+  | "share"
+  | "shop"
+  | "missions"
+  | "achievements"
+  | "settings"
+  | "tutorial";
 
 export interface TriggerDef {
   id: string;
@@ -74,6 +93,7 @@ export interface FusionResult {
 
 export interface EquippedItem {
   uid: string;
+  weaponId?: string;
   sourcePartIds: string[];
   name: string;
   slotId: SlotId;

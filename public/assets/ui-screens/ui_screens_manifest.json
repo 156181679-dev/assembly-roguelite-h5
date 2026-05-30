@@ -1,0 +1,422 @@
+[
+  {
+    "id": "01",
+    "name_cn": "启动页",
+    "name_en": "launch_screen",
+    "filename_raw": "raw_crops/01_启动页_launch_screen.png",
+    "filename_enhanced": "enhanced_4x/01_启动页_launch_screen.png",
+    "source_box": {
+      "left": 4,
+      "top": 135,
+      "right": 199,
+      "bottom": 513
+    },
+    "raw_size": {
+      "width": 195,
+      "height": 378
+    },
+    "enhanced_size": {
+      "width": 780,
+      "height": 1512
+    }
+  },
+  {
+    "id": "02",
+    "name_cn": "首页",
+    "name_en": "home",
+    "filename_raw": "raw_crops/02_首页_home.png",
+    "filename_enhanced": "enhanced_4x/02_首页_home.png",
+    "source_box": {
+      "left": 202,
+      "top": 135,
+      "right": 403,
+      "bottom": 513
+    },
+    "raw_size": {
+      "width": 201,
+      "height": 378
+    },
+    "enhanced_size": {
+      "width": 804,
+      "height": 1512
+    }
+  },
+  {
+    "id": "03",
+    "name_cn": "轮盘开箱",
+    "name_en": "loot_wheel",
+    "filename_raw": "raw_crops/03_轮盘开箱_loot_wheel.png",
+    "filename_enhanced": "enhanced_4x/03_轮盘开箱_loot_wheel.png",
+    "source_box": {
+      "left": 404,
+      "top": 135,
+      "right": 591,
+      "bottom": 513
+    },
+    "raw_size": {
+      "width": 187,
+      "height": 378
+    },
+    "enhanced_size": {
+      "width": 748,
+      "height": 1512
+    }
+  },
+  {
+    "id": "04",
+    "name_cn": "开箱结果",
+    "name_en": "loot_result",
+    "filename_raw": "raw_crops/04_开箱结果_loot_result.png",
+    "filename_enhanced": "enhanced_4x/04_开箱结果_loot_result.png",
+    "source_box": {
+      "left": 592,
+      "top": 135,
+      "right": 812,
+      "bottom": 513
+    },
+    "raw_size": {
+      "width": 220,
+      "height": 378
+    },
+    "enhanced_size": {
+      "width": 880,
+      "height": 1512
+    }
+  },
+  {
+    "id": "05",
+    "name_cn": "拼装界面",
+    "name_en": "assembly",
+    "filename_raw": "raw_crops/05_拼装界面_assembly.png",
+    "filename_enhanced": "enhanced_4x/05_拼装界面_assembly.png",
+    "source_box": {
+      "left": 814,
+      "top": 135,
+      "right": 1020,
+      "bottom": 513
+    },
+    "raw_size": {
+      "width": 206,
+      "height": 378
+    },
+    "enhanced_size": {
+      "width": 824,
+      "height": 1512
+    }
+  },
+  {
+    "id": "06",
+    "name_cn": "融合界面",
+    "name_en": "fusion",
+    "filename_raw": "raw_crops/06_融合界面_fusion.png",
+    "filename_enhanced": "enhanced_4x/06_融合界面_fusion.png",
+    "source_box": {
+      "left": 4,
+      "top": 544,
+      "right": 198,
+      "bottom": 865
+    },
+    "raw_size": {
+      "width": 194,
+      "height": 321
+    },
+    "enhanced_size": {
+      "width": 776,
+      "height": 1284
+    }
+  },
+  {
+    "id": "07",
+    "name_cn": "融合成功",
+    "name_en": "fusion_success",
+    "filename_raw": "raw_crops/07_融合成功_fusion_success.png",
+    "filename_enhanced": "enhanced_4x/07_融合成功_fusion_success.png",
+    "source_box": {
+      "left": 200,
+      "top": 544,
+      "right": 401,
+      "bottom": 865
+    },
+    "raw_size": {
+      "width": 201,
+      "height": 321
+    },
+    "enhanced_size": {
+      "width": 804,
+      "height": 1284
+    }
+  },
+  {
+    "id": "08",
+    "name_cn": "自动战斗",
+    "name_en": "auto_battle",
+    "filename_raw": "raw_crops/08_自动战斗_auto_battle.png",
+    "filename_enhanced": "enhanced_4x/08_自动战斗_auto_battle.png",
+    "source_box": {
+      "left": 402,
+      "top": 544,
+      "right": 591,
+      "bottom": 865
+    },
+    "raw_size": {
+      "width": 189,
+      "height": 321
+    },
+    "enhanced_size": {
+      "width": 756,
+      "height": 1284
+    }
+  },
+  {
+    "id": "09",
+    "name_cn": "超载时刻",
+    "name_en": "overdrive",
+    "filename_raw": "raw_crops/09_超载时刻_overdrive.png",
+    "filename_enhanced": "enhanced_4x/09_超载时刻_overdrive.png",
+    "source_box": {
+      "left": 592,
+      "top": 544,
+      "right": 806,
+      "bottom": 865
+    },
+    "raw_size": {
+      "width": 214,
+      "height": 321
+    },
+    "enhanced_size": {
+      "width": 856,
+      "height": 1284
+    }
+  },
+  {
+    "id": "10",
+    "name_cn": "战斗胜利",
+    "name_en": "victory",
+    "filename_raw": "raw_crops/10_战斗胜利_victory.png",
+    "filename_enhanced": "enhanced_4x/10_战斗胜利_victory.png",
+    "source_box": {
+      "left": 816,
+      "top": 552,
+      "right": 1018,
+      "bottom": 865
+    },
+    "raw_size": {
+      "width": 202,
+      "height": 313
+    },
+    "enhanced_size": {
+      "width": 808,
+      "height": 1252
+    }
+  },
+  {
+    "id": "11",
+    "name_cn": "怪物博物馆",
+    "name_en": "museum",
+    "filename_raw": "raw_crops/11_怪物博物馆_museum.png",
+    "filename_enhanced": "enhanced_4x/11_怪物博物馆_museum.png",
+    "source_box": {
+      "left": 5,
+      "top": 895,
+      "right": 199,
+      "bottom": 1229
+    },
+    "raw_size": {
+      "width": 194,
+      "height": 334
+    },
+    "enhanced_size": {
+      "width": 776,
+      "height": 1336
+    }
+  },
+  {
+    "id": "12",
+    "name_cn": "武器详情",
+    "name_en": "weapon_detail",
+    "filename_raw": "raw_crops/12_武器详情_weapon_detail.png",
+    "filename_enhanced": "enhanced_4x/12_武器详情_weapon_detail.png",
+    "source_box": {
+      "left": 201,
+      "top": 895,
+      "right": 401,
+      "bottom": 1229
+    },
+    "raw_size": {
+      "width": 200,
+      "height": 334
+    },
+    "enhanced_size": {
+      "width": 800,
+      "height": 1336
+    }
+  },
+  {
+    "id": "13",
+    "name_cn": "坟场_死亡",
+    "name_en": "graveyard_death",
+    "filename_raw": "raw_crops/13_坟场_死亡_graveyard_death.png",
+    "filename_enhanced": "enhanced_4x/13_坟场_死亡_graveyard_death.png",
+    "source_box": {
+      "left": 403,
+      "top": 895,
+      "right": 594,
+      "bottom": 1229
+    },
+    "raw_size": {
+      "width": 191,
+      "height": 334
+    },
+    "enhanced_size": {
+      "width": 764,
+      "height": 1336
+    }
+  },
+  {
+    "id": "14",
+    "name_cn": "挖坟开局",
+    "name_en": "grave_start",
+    "filename_raw": "raw_crops/14_挖坟开局_grave_start.png",
+    "filename_enhanced": "enhanced_4x/14_挖坟开局_grave_start.png",
+    "source_box": {
+      "left": 596,
+      "top": 895,
+      "right": 807,
+      "bottom": 1229
+    },
+    "raw_size": {
+      "width": 211,
+      "height": 334
+    },
+    "enhanced_size": {
+      "width": 844,
+      "height": 1336
+    }
+  },
+  {
+    "id": "15",
+    "name_cn": "分享卡片",
+    "name_en": "share_card",
+    "filename_raw": "raw_crops/15_分享卡片_share_card.png",
+    "filename_enhanced": "enhanced_4x/15_分享卡片_share_card.png",
+    "source_box": {
+      "left": 809,
+      "top": 895,
+      "right": 1018,
+      "bottom": 1229
+    },
+    "raw_size": {
+      "width": 209,
+      "height": 334
+    },
+    "enhanced_size": {
+      "width": 836,
+      "height": 1336
+    }
+  },
+  {
+    "id": "16",
+    "name_cn": "商店界面",
+    "name_en": "shop",
+    "filename_raw": "raw_crops/16_商店界面_shop.png",
+    "filename_enhanced": "enhanced_4x/16_商店界面_shop.png",
+    "source_box": {
+      "left": 4,
+      "top": 1259,
+      "right": 198,
+      "bottom": 1533
+    },
+    "raw_size": {
+      "width": 194,
+      "height": 274
+    },
+    "enhanced_size": {
+      "width": 776,
+      "height": 1096
+    }
+  },
+  {
+    "id": "17",
+    "name_cn": "任务界面",
+    "name_en": "missions",
+    "filename_raw": "raw_crops/17_任务界面_missions.png",
+    "filename_enhanced": "enhanced_4x/17_任务界面_missions.png",
+    "source_box": {
+      "left": 200,
+      "top": 1259,
+      "right": 401,
+      "bottom": 1533
+    },
+    "raw_size": {
+      "width": 201,
+      "height": 274
+    },
+    "enhanced_size": {
+      "width": 804,
+      "height": 1096
+    }
+  },
+  {
+    "id": "18",
+    "name_cn": "成就界面",
+    "name_en": "achievements",
+    "filename_raw": "raw_crops/18_成就界面_achievements.png",
+    "filename_enhanced": "enhanced_4x/18_成就界面_achievements.png",
+    "source_box": {
+      "left": 402,
+      "top": 1259,
+      "right": 592,
+      "bottom": 1529
+    },
+    "raw_size": {
+      "width": 190,
+      "height": 270
+    },
+    "enhanced_size": {
+      "width": 760,
+      "height": 1080
+    }
+  },
+  {
+    "id": "19",
+    "name_cn": "设置界面",
+    "name_en": "settings",
+    "filename_raw": "raw_crops/19_设置界面_settings.png",
+    "filename_enhanced": "enhanced_4x/19_设置界面_settings.png",
+    "source_box": {
+      "left": 594,
+      "top": 1259,
+      "right": 801,
+      "bottom": 1533
+    },
+    "raw_size": {
+      "width": 207,
+      "height": 274
+    },
+    "enhanced_size": {
+      "width": 828,
+      "height": 1096
+    }
+  },
+  {
+    "id": "20",
+    "name_cn": "新手引导示例",
+    "name_en": "tutorial",
+    "filename_raw": "raw_crops/20_新手引导示例_tutorial.png",
+    "filename_enhanced": "enhanced_4x/20_新手引导示例_tutorial.png",
+    "source_box": {
+      "left": 803,
+      "top": 1259,
+      "right": 1016,
+      "bottom": 1527
+    },
+    "raw_size": {
+      "width": 213,
+      "height": 268
+    },
+    "enhanced_size": {
+      "width": 852,
+      "height": 1072
+    }
+  }
+]

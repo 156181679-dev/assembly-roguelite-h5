@@ -1,7 +1,23 @@
 import { SLOT_ORDER } from "../data";
 import type { EquippedItem, GamePhase, MuseumRecord, PartDef, SlotId } from "../types";
 
-export type ButtonId = "continue" | "restart" | "museum" | "result";
+export type ButtonId =
+  | "continue"
+  | "start"
+  | "backHome"
+  | "autoEquip"
+  | "fuse"
+  | "restart"
+  | "museum"
+  | "result"
+  | "share"
+  | "shop"
+  | "missions"
+  | "achievements"
+  | "settings"
+  | "graveStart"
+  | "weaponDetail"
+  | "tutorial";
 
 interface DragRenderState {
   item: EquippedItem;
@@ -20,6 +36,9 @@ interface ProjectileRenderState {
   radius: number;
   color: string;
   icon: string;
+  sourcePartId: string;
+  weaponId?: string;
+  fused: boolean;
 }
 
 export interface RenderModel {
@@ -51,6 +70,28 @@ interface Rect {
   h: number;
 }
 
+type UIScreenId =
+  | "launch"
+  | "home"
+  | "loot"
+  | "lootResult"
+  | "assembly"
+  | "fusion"
+  | "fusionSuccess"
+  | "combat"
+  | "overdrive"
+  | "result"
+  | "museum"
+  | "weaponDetail"
+  | "graveyard"
+  | "graveStart"
+  | "share"
+  | "shop"
+  | "missions"
+  | "achievements"
+  | "settings"
+  | "tutorial";
+
 const WIDTH = 360;
 const HEIGHT = 640;
 
@@ -65,21 +106,83 @@ const PALETTE = {
   white: "#fff7fb"
 };
 
+const PART_SPRITE_ORDER = [
+  "blade",
+  "barrel",
+  "spring",
+  "rocket",
+  "fish",
+  "plunger",
+  "gear",
+  "chainsaw",
+  "fire_gem",
+  "ice_core",
+  "lightning_coil",
+  "poison_tank",
+  "wind_fan",
+  "shadow_orb",
+  "friend_blessing",
+  "ex_curse",
+  "kpi",
+  "procrastination",
+  "friendship",
+  "fortune"
+];
+
+const FUSION_SPRITE_ORDER = [
+  "weapon_fire_blade",
+  "weapon_railgun",
+  "weapon_flying_fish_missile",
+  "weapon_mental_pollution",
+  "weapon_toxic_frost",
+  "weapon_chainsaw_tornado",
+  "weapon_money_rocket",
+  "weapon_curse_saw",
+  "weapon_friendship_cannon",
+  "weapon_spring_plunger",
+  "weapon_shadow_money",
+  "weapon_blessing_ice"
+];
+
 const SLOT_POSITIONS: Record<SlotId, { x: number; y: number; label: string }> = {
-  head: { x: 180, y: 150, label: "头" },
-  body: { x: 180, y: 244, label: "身" },
-  left_hand: { x: 92, y: 258, label: "左" },
-  right_hand: { x: 268, y: 258, label: "右" },
-  back: { x: 216, y: 335, label: "背" },
-  feet: { x: 180, y: 446, label: "脚" }
+  head: { x: 180, y: 176, label: "头" },
+  body: { x: 180, y: 264, label: "身" },
+  left_hand: { x: 86, y: 274, label: "左" },
+  right_hand: { x: 274, y: 274, label: "右" },
+  back: { x: 224, y: 352, label: "背" },
+  feet: { x: 180, y: 438, label: "脚" }
 };
 
 const button = (id: ButtonId, x: number, y: number, w: number, h: number): Rect => ({ id, x, y, w, h });
 
+const UI_SCREEN_FILES: Record<UIScreenId, string> = {
+  launch: "/assets/ui-screens/01_启动页_launch_screen.png",
+  home: "/assets/ui-screens/02_首页_home.png",
+  loot: "/assets/ui-screens/03_轮盘开箱_loot_wheel.png",
+  lootResult: "/assets/ui-screens/04_开箱结果_loot_result.png",
+  assembly: "/assets/ui-screens/05_拼装界面_assembly.png",
+  fusion: "/assets/ui-screens/06_融合界面_fusion.png",
+  fusionSuccess: "/assets/ui-screens/07_融合成功_fusion_success.png",
+  combat: "/assets/ui-screens/08_自动战斗_auto_battle.png",
+  overdrive: "/assets/ui-screens/09_超载时刻_overdrive.png",
+  result: "/assets/ui-screens/10_战斗胜利_victory.png",
+  museum: "/assets/ui-screens/11_怪物博物馆_museum.png",
+  weaponDetail: "/assets/ui-screens/12_武器详情_weapon_detail.png",
+  graveyard: "/assets/ui-screens/13_坟场_死亡_graveyard_death.png",
+  graveStart: "/assets/ui-screens/14_挖坟开局_grave_start.png",
+  share: "/assets/ui-screens/15_分享卡片_share_card.png",
+  shop: "/assets/ui-screens/16_商店界面_shop.png",
+  missions: "/assets/ui-screens/17_任务界面_missions.png",
+  achievements: "/assets/ui-screens/18_成就界面_achievements.png",
+  settings: "/assets/ui-screens/19_设置界面_settings.png",
+  tutorial: "/assets/ui-screens/20_新手引导示例_tutorial.png"
+};
+
 export class CanvasRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly assets: Record<"master" | "hero" | "weapons", HTMLImageElement>;
+  private readonly assets: Record<"master" | "hero" | "parts" | "weapons" | "boss", HTMLImageElement>;
+  private readonly uiScreens: Record<UIScreenId, HTMLImageElement>;
   private buttons: Rect[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -91,9 +194,14 @@ export class CanvasRenderer {
     this.ctx = ctx;
     this.assets = {
       master: this.loadImage("/assets/generated/neon-master-visual.png"),
-      hero: this.loadImage("/assets/generated/mecha-fish-hero.png"),
-      weapons: this.loadImage("/assets/generated/fusion-weapons-sheet.png")
+      hero: this.loadImage("/assets/generated/mecha-fish-base.png"),
+      parts: this.loadImage("/assets/generated/base-parts-sheet.png"),
+      weapons: this.loadImage("/assets/generated/fusion-weapons-12-sheet.png"),
+      boss: this.loadImage("/assets/generated/boss-asteroid-demon.png")
     };
+    this.uiScreens = Object.fromEntries(
+      Object.entries(UI_SCREEN_FILES).map(([key, path]) => [key, this.loadImage(path)])
+    ) as Record<UIScreenId, HTMLImageElement>;
   }
 
   render(model: RenderModel): void {
@@ -103,19 +211,308 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     ctx.save();
     ctx.scale(this.canvas.width / WIDTH, this.canvas.height / HEIGHT);
-    this.drawBackground(model);
-    this.drawTopBrand(model);
+    if (model.phase === "launch") this.drawLaunch(model);
+    else if (model.phase === "home") this.drawHome(model);
+    else {
+      this.drawBackground(model);
+      this.drawTopBrand(model);
 
-    if (model.phase === "loot") this.drawLoot(model);
-    if (model.phase === "assembly" || model.phase === "fusion") this.drawAssembly(model);
-    if (model.phase === "combat") this.drawCombat(model);
-    if (model.phase === "result") this.drawResult(model);
-    if (model.phase === "museum") this.drawMuseum(model);
+      if (model.phase === "loot") this.drawLoot(model);
+      if (model.phase === "lootResult") this.drawLootResult(model);
+      if (model.phase === "assembly" || model.phase === "fusion") this.drawAssembly(model);
+      if (model.phase === "fusionSuccess") this.drawFusionSuccess(model);
+      if (model.phase === "combat") this.drawCombat(model);
+      if (model.phase === "result") this.drawResult(model);
+      if (model.phase === "museum") this.drawMuseum(model);
+      if (model.phase === "shop") this.drawShop(model);
+      if (model.phase === "missions") this.drawMissions(model);
+      if (model.phase === "achievements") this.drawAchievements(model);
+      if (model.phase === "settings") this.drawSettings(model);
+      if (model.phase === "weaponDetail") this.drawWeaponDetail(model);
+      if (model.phase === "graveStart") this.drawGraveStart(model);
+      if (model.phase === "graveyard") this.drawGraveyard(model);
+      if (model.phase === "share") this.drawShare(model);
+      if (model.phase === "tutorial") this.drawTutorial(model);
 
-    this.drawBottomTabs(model.phase);
+      this.drawBottomTabs(model.phase);
+    }
     this.drawFloatingTexts(model);
     if (model.drag) this.drawItem(model.drag.item, model.drag.x, model.drag.y, 32, true);
     ctx.restore();
+  }
+
+  private equippedItems(model: RenderModel): EquippedItem[] {
+    return Object.values(model.equipped).filter(Boolean) as EquippedItem[];
+  }
+
+  private drawLaunch(model: RenderModel): void {
+    this.drawBackground(model);
+    if (this.isImageReady(this.assets.master)) {
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.92;
+      this.drawCoverImage(this.assets.master, 0, 0, WIDTH, HEIGHT);
+      this.ctx.restore();
+    }
+    this.drawTitleLogo(180, 82, 42);
+    this.drawCenteredText("融合肉鸽", 180, 130, 27, PALETTE.purple, "900");
+    this.drawButton("start", 82, 528, 196, 48, "开始游戏");
+  }
+
+  private drawHome(model: RenderModel): void {
+    this.drawBackground(model);
+    this.drawTopCurrency();
+    this.drawTitleLogo(182, 72, 31);
+    this.drawSideMenu();
+    this.drawNeonPanel(86, 110, 222, 318, PALETTE.purple, 12);
+    if (this.isImageReady(this.assets.hero)) {
+      this.ctx.save();
+      this.ctx.shadowBlur = 26;
+      this.ctx.shadowColor = PALETTE.cyan;
+      this.ctx.drawImage(this.assets.hero, 108, 126, 165, 250);
+      this.ctx.restore();
+    }
+    this.drawButton("start", 88, 390, 184, 46, "开始冒险");
+    this.drawButton("graveStart", 104, 450, 152, 36, "挖坟开局");
+    this.drawHomeNavButton("shop", 28, 548, "商店");
+    this.drawHomeNavButton("missions", 110, 548, "任务");
+    this.drawHomeNavButton("achievements", 192, 548, "排行");
+    this.drawHomeNavButton("weaponDetail", 274, 548, "仓库");
+  }
+
+  private drawLootResult(model: RenderModel): void {
+    this.drawNeonPanel(16, 100, 328, 452, PALETTE.purple, 14);
+    this.drawCenteredText("恭喜获得", 180, 150, 30, PALETTE.yellow, "900");
+    model.rewards.slice(0, 4).forEach((part, index) => {
+      const x = 62 + index * 78;
+      this.drawNeonPanel(x - 30, 228, 60, 88, part.color, 6);
+      this.drawPartIcon(part, x, 262, 20);
+      this.drawCenteredText(part.name, x, 304, 10, PALETTE.white, "800");
+    });
+    this.drawButton("continue", 86, 512, 188, 42, "继续拼装");
+  }
+
+  private drawFusionSuccess(model: RenderModel): void {
+    const fused = model.fusedWeapons[model.fusedWeapons.length - 1];
+    this.drawNeonPanel(16, 100, 328, 452, PALETTE.purple, 14);
+    this.drawCenteredText("融合成功！", 180, 160, 30, PALETTE.yellow, "900");
+    if (fused) {
+      this.drawCenteredText(fused.name, 180, 220, 28, PALETTE.yellow, "900");
+      this.drawFusionWeapon(fused, 180, 324, 58);
+      this.drawCenteredText("SSR", 180, 438, 22, PALETTE.yellow, "900");
+    }
+    this.drawButton("continue", 86, 520, 188, 42, "自动装配中");
+  }
+
+  private drawShop(_model: RenderModel): void {
+    this.drawGridPage("商店界面", "全部", ["金币礼包", "能量礼包", "零件礼包", "稀有刀", "火焰石", "甲片包"]);
+  }
+
+  private drawMissions(_model: RenderModel): void {
+    this.drawListPage("任务界面", ["进行 1 次融合", "击败 3 个 BOSS", "单局造成 1 亿伤害", "累计登录 3 天"]);
+  }
+
+  private drawAchievements(_model: RenderModel): void {
+    this.drawListPage("成就界面", ["融合大师", "连击达人", "秒杀之王", "博物馆收藏家"]);
+  }
+
+  private drawSettings(_model: RenderModel): void {
+    this.drawListPage("设置界面", ["音效  开", "音乐  开", "震动  开", "画面质量  高", "语言  简体中文"]);
+  }
+
+  private drawWeaponDetail(model: RenderModel): void {
+    const best = model.fusedWeapons[model.fusedWeapons.length - 1] ?? this.equippedItems(model)[0];
+    this.drawNeonPanel(16, 100, 328, 452, PALETTE.purple, 14);
+    this.drawText(best?.name ?? "火焰刀", 38, 152, 24, PALETTE.yellow, "900");
+    this.drawCenteredText("SSR", 286, 154, 18, PALETTE.yellow, "900");
+    if (best?.fused) this.drawFusionWeapon(best, 180, 270, 58);
+    else this.drawWeaponShape("刀", 180, 270, 54, PALETTE.orange);
+    this.drawText("秒伤", 52, 400, 16, PALETTE.white, "800");
+    this.drawText("9.99E+08", 236, 400, 16, PALETTE.yellow, "900", "right");
+    this.drawText("最高连击", 52, 430, 16, PALETTE.white, "800");
+    this.drawText("56", 236, 430, 16, PALETTE.yellow, "900", "right");
+    this.drawButton("share", 62, 500, 108, 34, "分享");
+    this.drawButton("restart", 194, 500, 108, 34, "再来一局");
+  }
+
+  private drawGraveStart(_model: RenderModel): void {
+    this.drawListPage("挖坟开局", ["选择一件遗物带入本局", "火焰刀", "电磁炮", "鱼头导弹"]);
+    this.drawButton("start", 82, 520, 196, 42, "开始冒险");
+  }
+
+  private drawGraveyard(_model: RenderModel): void {
+    this.drawListPage("坟场（死亡）", ["你被击败了...", "火箭推进器已埋入坟场"]);
+    this.drawButton("museum", 44, 520, 124, 38, "回博物馆");
+    this.drawButton("restart", 194, 520, 124, 38, "再来一局");
+  }
+
+  private drawShare(model: RenderModel): void {
+    const best = model.fusedWeapons[model.fusedWeapons.length - 1] ?? this.equippedItems(model)[0];
+    this.drawNeonPanel(18, 92, 324, 500, PALETTE.purple, 12);
+    this.drawTitleLogo(180, 138, 30);
+    if (this.isImageReady(this.assets.hero)) this.ctx.drawImage(this.assets.hero, 98, 164, 180, 238);
+    if (best?.fused) this.drawFusionWeapon(best, 248, 380, 34);
+    this.drawText("秒伤", 70, 430, 18, PALETTE.white, "900");
+    this.drawText("9.99E+08", 286, 430, 20, PALETTE.cyan, "900", "right");
+    this.drawText("我的怪物，我来造！", 70, 524, 20, PALETTE.purple, "900");
+  }
+
+  private drawTutorial(_model: RenderModel): void {
+    this.drawNeonPanel(22, 138, 316, 300, PALETTE.purple, 12);
+    this.drawCenteredText("轮盘开箱", 180, 205, 24, PALETTE.yellow, "900");
+    this.drawCenteredText("点击屏幕任意位置停止轮盘，获得零件", 180, 250, 14, PALETTE.white, "800");
+    this.drawButton("continue", 96, 360, 168, 38, "知道了");
+  }
+
+  private drawTitleLogo(x: number, y: number, size: number): void {
+    this.drawCenteredText("拼装狂潮", x - 12, y, size, PALETTE.yellow, "900");
+    this.drawCenteredText("融合肉鸽", x + 22, y + size * 0.72, Math.floor(size * 0.58), PALETTE.white, "900");
+  }
+
+  private drawTopCurrency(): void {
+    this.drawNeonPanel(18, 18, 96, 28, PALETTE.yellow, 6);
+    this.drawText("◎ 123456", 30, 38, 12, PALETTE.white, "800");
+    this.drawNeonPanel(124, 18, 92, 28, PALETTE.cyan, 6);
+    this.drawText("⚡ 50/50", 136, 38, 12, PALETTE.cyan, "800");
+    this.drawNeonPanel(318, 18, 28, 28, PALETTE.purple, 6);
+    this.drawCenteredText("⚙", 332, 38, 16, PALETTE.white, "900");
+    this.buttons.push(button("settings", 318, 18, 28, 28));
+  }
+
+  private drawSideMenu(): void {
+    [
+      ["museum", "博物馆"],
+      ["achievements", "成就"],
+      ["settings", "设置"]
+    ].forEach(([id, label], index) => {
+      const y = 142 + index * 62;
+      this.buttons.push(button(id as ButtonId, 20, y, 58, 48));
+      this.drawNeonPanel(20, y, 58, 48, PALETTE.purple, 6);
+      this.drawCenteredText(label, 49, y + 30, 12, PALETTE.white, "900");
+    });
+  }
+
+  private drawHomeNavButton(id: ButtonId, x: number, y: number, label: string): void {
+    this.buttons.push(button(id, x, y, 58, 46));
+    this.drawNeonPanel(x, y, 58, 46, PALETTE.purple, 6);
+    this.drawCenteredText(label.slice(0, 1), x + 29, y + 20, 16, PALETTE.white, "900");
+    this.drawCenteredText(label, x + 29, y + 37, 10, "rgba(255,255,255,0.82)", "800");
+  }
+
+  private drawGridPage(title: string, tab: string, items: string[]): void {
+    this.drawNeonPanel(16, 96, 328, 472, PALETTE.purple, 12);
+    this.drawText(title, 34, 136, 22, PALETTE.white, "900");
+    this.drawNeonPanel(34, 154, 64, 26, PALETTE.yellow, 5);
+    this.drawCenteredText(tab, 66, 173, 12, "#130914", "900");
+    items.forEach((item, index) => {
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      const x = 38 + col * 99;
+      const y = 202 + row * 128;
+      this.drawNeonPanel(x, y, 82, 102, index % 2 ? PALETTE.cyan : PALETTE.purple, 6);
+      this.drawPartSprite(PART_SPRITE_ORDER[index % PART_SPRITE_ORDER.length], x + 41, y + 40, 18);
+      this.drawCenteredText(item, x + 41, y + 78, 10, PALETTE.white, "800");
+      this.drawCenteredText("★ 300", x + 41, y + 96, 11, PALETTE.yellow, "900");
+    });
+  }
+
+  private drawListPage(title: string, rows: string[]): void {
+    this.drawNeonPanel(16, 96, 328, 472, PALETTE.purple, 12);
+    this.drawText(title, 34, 138, 22, PALETTE.white, "900");
+    rows.forEach((row, index) => {
+      const y = 174 + index * 62;
+      this.drawNeonPanel(34, y, 292, 46, index % 2 ? PALETTE.cyan : PALETTE.purple, 6);
+      this.drawText(row, 52, y + 29, 14, PALETTE.white, "800");
+    });
+    this.buttons.push(button("backHome", 20, 20, 70, 54));
+  }
+
+  private screenFor(model: RenderModel): UIScreenId {
+    if (model.phase === "combat" && model.overdrive) return "overdrive";
+    return model.phase as UIScreenId;
+  }
+
+  private drawReferenceScreen(model: RenderModel): void {
+    const screen = this.screenFor(model);
+    const image = this.uiScreens[screen];
+    if (this.isImageReady(image)) {
+      this.drawCoverImage(image, 0, 0, WIDTH, HEIGHT);
+      return;
+    }
+    this.drawBackground(model);
+  }
+
+  private drawReferenceOverlays(model: RenderModel): void {
+    if (model.phase === "assembly") {
+      this.drawEquippedOverlays(model);
+      this.drawButton("autoEquip", 28, 560, 132, 36, "一键装配");
+      this.drawButton("continue", 200, 560, 132, 36, "去融合");
+      return;
+    }
+
+    if (model.phase === "fusion") {
+      this.drawEquippedOverlays(model);
+      this.drawButton("fuse", 28, 560, 132, 36, "一键融合");
+      this.drawButton("continue", 200, 560, 132, 36, "下一轮");
+      return;
+    }
+
+    if (model.phase === "fusionSuccess") {
+      const fused = model.fusedWeapons[model.fusedWeapons.length - 1];
+      if (fused) this.drawFusionWeapon(fused, 180, 360, 48);
+      this.drawButton("continue", 104, 552, 152, 40, "自动装配中");
+      return;
+    }
+
+    if (model.phase === "combat") {
+      this.drawCombatEffects(model);
+      return;
+    }
+
+    if (model.phase === "result") {
+      this.drawButton("museum", 70, 560, 220, 38, "进入博物馆");
+    }
+  }
+
+  private registerReferenceButtons(model: RenderModel): void {
+    const phase = model.phase;
+    if (phase === "launch") {
+      this.buttons.push(button("start", 80, 520, 200, 64));
+      return;
+    }
+    if (phase === "home") {
+      this.buttons.push(button("start", 82, 292, 196, 54));
+      this.buttons.push(button("graveStart", 94, 360, 172, 42));
+      this.buttons.push(button("museum", 22, 142, 62, 54));
+      this.buttons.push(button("achievements", 22, 202, 62, 54));
+      this.buttons.push(button("settings", 22, 262, 62, 54));
+      this.buttons.push(button("shop", 28, 560, 70, 54));
+      this.buttons.push(button("missions", 108, 560, 70, 54));
+      this.buttons.push(button("weaponDetail", 188, 560, 70, 54));
+      return;
+    }
+    if (phase === "loot" || phase === "lootResult" || phase === "fusionSuccess" || phase === "graveStart" || phase === "tutorial") {
+      this.buttons.push(button("continue", 0, 0, WIDTH, HEIGHT));
+      return;
+    }
+    if (phase === "combat") {
+      this.buttons.push(button("continue", 0, 0, WIDTH, HEIGHT));
+      return;
+    }
+    if (["museum", "weaponDetail", "graveyard", "share", "shop", "missions", "achievements", "settings"].includes(phase)) {
+      this.buttons.push(button("backHome", 0, 0, 82, 82));
+    }
+  }
+
+  private drawCombatEffects(model: RenderModel): void {
+    for (const projectile of model.projectiles) {
+      const x = 180 + Math.cos(projectile.angle) * projectile.radius;
+      const y = 320 + Math.sin(projectile.angle) * projectile.radius * 0.74;
+      this.drawLaser(180, 315, x, y, projectile.color, model.overdrive ? 5 : 3);
+      this.drawProjectile(projectile, x, y, model.overdrive);
+    }
+    if (model.maxCombo > 0) {
+      this.drawCenteredText(`COMBO x${Math.max(model.maxCombo, model.overdrive ? 56 : 0)}`, 230, 526, 15, PALETTE.yellow, "900");
+    }
   }
 
   hitTestButton(x: number, y: number): ButtonId | undefined {
@@ -163,7 +560,7 @@ export class CanvasRenderer {
     const ctx = card.getContext("2d");
     if (!ctx) return "";
 
-    const equipped = Object.values(model.equipped).filter(Boolean) as EquippedItem[];
+    const equipped = this.equippedItems(model);
     const best = equipped.find((item) => item.fused) ?? equipped[0];
 
     const bg = ctx.createLinearGradient(0, 0, 0, card.height);
@@ -300,9 +697,13 @@ export class CanvasRenderer {
     this.drawInventory(model.inventory);
     if (model.phase === "fusion") {
       this.drawFusionFormula(model);
+      this.drawButton("fuse", 30, 560, 126, 36, "一键融合");
+      this.drawButton("continue", 204, 560, 132, 36, "开战/下一轮");
+    } else {
+      this.drawButton("autoEquip", 30, 560, 126, 36, "一键装配");
+      this.drawButton("continue", 204, 560, 132, 36, "去融合");
     }
-    this.drawPrimaryHint(model.phase === "assembly" ? "把零件拖到发光插槽" : "拖已装零件互撞，强制生成神兵", 515);
-    this.drawButton("continue", 226, 574, 110, 38, model.phase === "assembly" ? "去融合" : "开战");
+    this.drawPrimaryHint(model.phase === "assembly" ? "把零件拖到发光插槽" : "拖已装零件互撞，或直接点一键融合", 515);
   }
 
   private drawCombat(model: RenderModel): void {
@@ -310,11 +711,12 @@ export class CanvasRenderer {
     this.drawCenteredText("4. 自动战斗", 180, 130, 23, PALETTE.white, "900");
     this.drawBattlefield(model);
     this.drawMechaSkeleton(model, true);
+    this.drawEquippedOverlays(model, true);
     for (const projectile of model.projectiles) {
       const x = 180 + Math.cos(projectile.angle) * projectile.radius;
       const y = 320 + Math.sin(projectile.angle) * projectile.radius * 0.74;
       this.drawLaser(180, 304, x, y, projectile.color, model.overdrive ? 6 : 3);
-      this.drawBadge(projectile.icon, x, y, 15, projectile.color);
+      this.drawProjectile(projectile, x, y, model.overdrive);
     }
     this.drawDamageNumber("-9.99E+08", 258, 222, 20, PALETTE.yellow);
     this.drawDamageNumber("-1.56E+06", 270, 259, 16, PALETTE.purple);
@@ -325,7 +727,7 @@ export class CanvasRenderer {
   }
 
   private drawResult(model: RenderModel): void {
-    const equipped = Object.values(model.equipped).filter(Boolean) as EquippedItem[];
+    const equipped = this.equippedItems(model);
     const best = equipped.find((item) => item.fused) ?? equipped[0];
     this.drawNeonPanel(16, 96, 328, 452, PALETTE.purple, 14);
     this.drawCenteredText(model.result === "victory" ? "拼得离谱，赢得炸裂！" : "已收入怪物博物馆", 180, 134, 24, PALETTE.yellow, "900");
@@ -368,7 +770,7 @@ export class CanvasRenderer {
     }
 
     const ctx = this.ctx;
-    const equipped = Object.values(model.equipped).filter(Boolean) as EquippedItem[];
+    const equipped = this.equippedItems(model);
     const best = equipped.find((item) => item.fused);
     const bodyColor = best?.color ?? "#d8dde8";
     ctx.save();
@@ -417,8 +819,19 @@ export class CanvasRenderer {
       this.ctx.lineWidth = item ? 4 : 2;
       this.ctx.stroke();
       this.ctx.restore();
-      if (item) this.drawItem(item, pos.x, pos.y, 24);
-      else this.drawCenteredText(pos.label, pos.x, pos.y + 5, 14, "rgba(255,255,255,0.65)", "900");
+      if (item) this.drawItem(item, pos.x, pos.y, 20);
+      else this.drawSocketGlyph(pos.x, pos.y);
+    }
+  }
+
+  private drawEquippedOverlays(model: RenderModel, battle = false): void {
+    for (const slotId of SLOT_ORDER) {
+      const item = model.equipped[slotId];
+      if (!item) continue;
+      const pos = SLOT_POSITIONS[slotId];
+      const yOffset = battle ? 26 : 0;
+      const radius = item.fused ? (battle ? 23 : 20) : battle ? 19 : 18;
+      this.drawItem(item, pos.x, pos.y + yOffset, radius, battle && item.fused);
     }
   }
 
@@ -436,7 +849,18 @@ export class CanvasRenderer {
   }
 
   private drawFusionFormula(model: RenderModel): void {
-    const equipped = Object.values(model.equipped).filter(Boolean) as EquippedItem[];
+    const fused = model.fusedWeapons[model.fusedWeapons.length - 1];
+    if (fused) {
+      this.ctx.save();
+      this.ctx.shadowBlur = 28;
+      this.ctx.shadowColor = fused.color;
+      this.drawCenteredText("融合成功！", 180, 380, 21, PALETTE.yellow, "900");
+      this.drawFusionWeapon(fused, 180, 430, 38);
+      this.ctx.restore();
+      return;
+    }
+
+    const equipped = this.equippedItems(model);
     const left = equipped[0];
     const right = equipped[1];
     if (!left || !right) return;
@@ -457,18 +881,57 @@ export class CanvasRenderer {
   }
 
   private drawBoss(x: number, y: number, overdrive: boolean): void {
-    this.ctx.save();
-    this.ctx.shadowBlur = overdrive ? 26 : 14;
-    this.ctx.shadowColor = overdrive ? PALETTE.yellow : PALETTE.purple;
-    this.ctx.fillStyle = overdrive ? PALETTE.red : "#5b1b9d";
-    this.ctx.beginPath();
-    this.ctx.roundRect(x - 58, y - 30, 116, 60, 16);
-    this.ctx.fill();
-    this.ctx.strokeStyle = PALETTE.white;
-    this.ctx.lineWidth = 3;
-    this.ctx.stroke();
-    this.drawCenteredText("BOSS", x, y + 8, 24, PALETTE.white, "900");
-    this.ctx.restore();
+    const ctx = this.ctx;
+    if (this.isImageReady(this.assets.boss)) {
+      ctx.save();
+      ctx.shadowBlur = overdrive ? 34 : 20;
+      ctx.shadowColor = overdrive ? PALETTE.yellow : PALETTE.purple;
+      const size = overdrive ? 142 : 126;
+      ctx.drawImage(this.assets.boss, x - size / 2, y - size / 2, size, size);
+      ctx.restore();
+      return;
+    }
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.shadowBlur = overdrive ? 32 : 18;
+    ctx.shadowColor = overdrive ? PALETTE.yellow : PALETTE.purple;
+    ctx.fillStyle = overdrive ? "#ff3159" : "#7d2cff";
+    ctx.strokeStyle = PALETTE.white;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 56, 38, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#111326";
+    ctx.beginPath();
+    ctx.arc(-20, -4, 12, 0, Math.PI * 2);
+    ctx.arc(22, -5, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = overdrive ? PALETTE.yellow : PALETTE.cyan;
+    ctx.beginPath();
+    ctx.arc(-20, -4, 6, 0, Math.PI * 2);
+    ctx.arc(22, -5, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#090716";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-24, 20);
+    ctx.quadraticCurveTo(0, 34, 28, 18);
+    ctx.stroke();
+
+    ctx.strokeStyle = PALETTE.orange;
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (Math.PI * 2 * i) / 6;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * 42, Math.sin(angle) * 26 + 4);
+      ctx.lineTo(Math.cos(angle) * 78, Math.sin(angle) * 48 + 4);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawShareCardPreview(model: RenderModel, best?: EquippedItem): void {
@@ -501,7 +964,7 @@ export class CanvasRenderer {
   }
 
   private inventoryPosition(index: number): { x: number; y: number } {
-    return { x: 48 + index * 52, y: 545 };
+    return { x: 46 + index * 49, y: 536 };
   }
 
   private drawButton(id: ButtonId, x: number, y: number, w: number, h: number, label: string): void {
@@ -526,36 +989,87 @@ export class CanvasRenderer {
 
   private drawItem(item: EquippedItem | undefined, x: number, y: number, radius: number, glow = false): void {
     if (!item) return;
-    if (item.fused || glow) {
+    if (item.fused) {
       this.ctx.save();
       this.ctx.shadowBlur = 28;
       this.ctx.shadowColor = item.color;
-      this.drawWeaponShape(item.icon, x, y, radius, item.color);
+      this.drawFusionWeapon(item, x, y, radius);
       this.ctx.restore();
       return;
     }
-    this.drawBadge(item.icon, x, y, radius, item.color);
+
+    if (glow) {
+      this.ctx.save();
+      this.ctx.shadowBlur = 22;
+      this.ctx.shadowColor = item.color;
+      this.drawPartSprite(item.sourcePartIds[0], x, y, radius);
+      this.ctx.restore();
+      return;
+    }
+
+    this.drawPartSprite(item.sourcePartIds[0], x, y, radius);
   }
 
   private drawPartIcon(part: PartDef, x: number, y: number, radius: number): void {
-    this.drawBadge(part.icon, x, y, radius, part.color);
+    this.drawPartSprite(part.id, x, y, radius);
   }
 
-  private drawWeaponShape(label: string, x: number, y: number, radius: number, color: string): void {
-    const weaponIndex = this.weaponIndex(label);
-    if (weaponIndex >= 0 && this.assets.weapons.complete && this.assets.weapons.naturalWidth > 0) {
-      const sw = this.assets.weapons.naturalWidth / 2;
-      const sh = this.assets.weapons.naturalHeight / 2;
-      const sx = (weaponIndex % 2) * sw;
-      const sy = Math.floor(weaponIndex / 2) * sh;
+  private drawProjectile(projectile: ProjectileRenderState, x: number, y: number, overdrive: boolean): void {
+    this.ctx.save();
+    this.ctx.globalAlpha = overdrive ? 1 : 0.92;
+    this.ctx.shadowBlur = overdrive ? 18 : 10;
+    this.ctx.shadowColor = projectile.color;
+    if (projectile.fused) {
+      const weaponIndex = this.weaponSpriteIndex(projectile.weaponId ?? projectile.icon);
+      if (this.isImageReady(this.assets.weapons)) {
+        const size = overdrive ? 62 : 48;
+        this.drawSheetCell(this.assets.weapons, 4, 3, weaponIndex, x - size / 2, y - size / 2, size, size);
+        this.ctx.restore();
+        return;
+      }
+    } else if (this.isImageReady(this.assets.parts)) {
+      const partIndex = PART_SPRITE_ORDER.indexOf(projectile.sourcePartId);
+      if (partIndex >= 0) {
+        const size = overdrive ? 44 : 36;
+        this.drawSheetCell(this.assets.parts, 5, 4, partIndex, x - size / 2, y - size / 2, size, size);
+        this.ctx.restore();
+        return;
+      }
+    }
+    this.ctx.restore();
+    this.drawWeaponShape(projectile.icon, x, y, overdrive ? 17 : 14, projectile.color);
+  }
+
+  private drawPartSprite(partId: string, x: number, y: number, radius: number): void {
+    const partIndex = PART_SPRITE_ORDER.indexOf(partId);
+    if (partIndex >= 0 && this.isImageReady(this.assets.parts)) {
       this.ctx.save();
-      this.ctx.shadowBlur = 18;
-      this.ctx.shadowColor = color;
-      this.ctx.drawImage(this.assets.weapons, sx, sy, sw, sh, x - radius * 1.6, y - radius * 1.6, radius * 3.2, radius * 3.2);
+      this.ctx.shadowBlur = 12;
+      this.ctx.shadowColor = PALETTE.cyan;
+      this.drawSheetCell(this.assets.parts, 5, 4, partIndex, x - radius * 1.75, y - radius * 1.75, radius * 3.5, radius * 3.5);
       this.ctx.restore();
       return;
     }
 
+    this.drawBadge("?", x, y, radius, PALETTE.purple);
+  }
+
+  private drawFusionWeapon(item: EquippedItem, x: number, y: number, radius: number): void {
+    const weaponIndex = this.weaponSpriteIndex(item.weaponId ?? item.name);
+    if (this.isImageReady(this.assets.weapons)) {
+      this.drawSheetCell(this.assets.weapons, 4, 3, weaponIndex, x - radius * 1.95, y - radius * 1.55, radius * 3.9, radius * 3.1);
+      return;
+    }
+
+    this.drawWeaponShape(item.icon, x, y, radius, item.color);
+  }
+
+  private weaponSpriteIndex(key: string): number {
+    const exactIndex = FUSION_SPRITE_ORDER.indexOf(key);
+    return exactIndex >= 0 ? exactIndex : this.hashToIndex(key, FUSION_SPRITE_ORDER.length);
+  }
+
+  private drawWeaponShape(label: string, x: number, y: number, radius: number, color: string): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(x, y);
@@ -590,6 +1104,22 @@ export class CanvasRenderer {
     ctx.stroke();
     ctx.restore();
     this.drawCenteredText(label, x, y + Math.min(6, radius * 0.24), Math.max(9, radius * 0.46), "#090716", "900");
+  }
+
+  private drawSocketGlyph(x: number, y: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = "rgba(18,244,255,0.88)";
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = PALETTE.cyan;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + 10, y);
+    ctx.moveTo(x, y - 10);
+    ctx.lineTo(x, y + 10);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawNeonPanel(x: number, y: number, w: number, h: number, color: string, radius: number): void {
@@ -666,7 +1196,8 @@ export class CanvasRenderer {
     this.ctx.translate(x, y);
     this.ctx.scale(scale, scale);
     this.drawMonsterHead(0, -70, item?.color ?? PALETTE.cyan);
-    this.drawWeaponShape(item?.icon ?? "神兵", -58, -4, 38, item?.color ?? PALETTE.purple);
+    if (item?.fused) this.drawFusionWeapon(item, -58, -4, 38);
+    else this.drawWeaponShape(item?.icon ?? "神兵", -58, -4, 38, item?.color ?? PALETTE.purple);
     this.drawWeaponShape("炮", 68, 8, 42, PALETTE.cyan);
     this.drawJetBoot(-28, 84, -0.18);
     this.drawJetBoot(32, 84, 0.18);
@@ -899,14 +1430,28 @@ export class CanvasRenderer {
   }
 
   private phaseName(phase: GamePhase): string {
-    return {
+    const names: Record<GamePhase, string> = {
+      launch: "启动页",
+      home: "首页",
       loot: "轮盘开箱",
+      lootResult: "开箱结果",
       assembly: "超级拼装",
       fusion: "随意融合",
+      fusionSuccess: "融合成功",
       combat: "自动战斗",
+      graveyard: "坟场",
+      graveStart: "挖坟开局",
       result: "分享卡",
-      museum: "博物馆"
-    }[phase];
+      museum: "博物馆",
+      weaponDetail: "武器详情",
+      share: "分享卡片",
+      shop: "商店",
+      missions: "任务",
+      achievements: "成就",
+      settings: "设置",
+      tutorial: "新手引导"
+    };
+    return names[phase];
   }
 
   private distance(x1: number, y1: number, x2: number, y2: number): number {
@@ -917,6 +1462,35 @@ export class CanvasRenderer {
     const image = new Image();
     image.src = src;
     return image;
+  }
+
+  private isImageReady(image: HTMLImageElement): boolean {
+    return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+  }
+
+  private drawSheetCell(
+    image: HTMLImageElement,
+    columns: number,
+    rows: number,
+    index: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number
+  ): void {
+    const sw = image.naturalWidth / columns;
+    const sh = image.naturalHeight / rows;
+    const sx = (index % columns) * sw;
+    const sy = Math.floor(index / columns) * sh;
+    this.ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
+  }
+
+  private hashToIndex(text: string, modulo: number): number {
+    let hash = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+    }
+    return hash % modulo;
   }
 
   private drawCoverImage(image: HTMLImageElement, x: number, y: number, w: number, h: number): void {
@@ -934,13 +1508,5 @@ export class CanvasRenderer {
       sy = (image.naturalHeight - sh) / 2;
     }
     this.ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
-  }
-
-  private weaponIndex(label: string): number {
-    if (label.includes("炎") || label.includes("火")) return 0;
-    if (label.includes("磁") || label.includes("炮")) return 1;
-    if (label.includes("鱼")) return 2;
-    if (label.includes("污") || label.includes("咒") || label.includes("K")) return 3;
-    return -1;
   }
 }
