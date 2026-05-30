@@ -1,7 +1,7 @@
 import { BALANCE, createInitialRunState, FUSION_RULES, PART_DEFS, SLOT_ORDER } from "./data";
 import type { EquippedItem, GamePhase, MuseumRecord, PartDef, RunState, SlotId } from "./types";
 import { CanvasRenderer, type ButtonId, type RenderModel } from "./render/CanvasRenderer";
-import { createEquippedPart, createEquippedWeapon, simulateCombat } from "./systems/CombatSystem";
+import { createEquippedPart, createEquippedWeapon, estimateBuildPower, simulateCombat } from "./systems/CombatSystem";
 import { fuseParts } from "./systems/FusionSystem";
 import { drawLootRewards } from "./systems/LootSystem";
 import { MuseumSystem } from "./systems/MuseumSystem";
@@ -121,7 +121,7 @@ export class GameApp {
       parts: PART_DEFS,
       ownedPartIds: this.run.ownedPartIds
     });
-    this.floatingTexts.push({ text: "点击轮盘停止旋转，爆出本轮零件", ttl: 1800, color: "#ffffff" });
+    this.floatingTexts.push({ text: "点击补给机抽取本轮零件", ttl: 1500, color: "#ffffff" });
   }
 
   private startAdventure(): void {
@@ -235,7 +235,7 @@ export class GameApp {
   private createProjectiles(): Projectile[] {
     const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
     return equipped.flatMap((item, index) => {
-      const count = item.fused ? 4 : 2;
+      const count = item.fused ? 2 : 1;
       return Array.from({ length: count }, (_, offset) => ({
         angle: (Math.PI * 2 * (index + offset / count)) / Math.max(equipped.length, 1),
         radius: 32 + offset * 16,
@@ -246,7 +246,7 @@ export class GameApp {
         fused: item.fused,
         speed: item.fused ? 2.2 : 1.35
       }));
-    });
+    }).slice(0, 8);
   }
 
   private tick = (now: number): void => {
@@ -271,9 +271,12 @@ export class GameApp {
       }));
 
       const progress = this.phaseElapsed / PHASE_DURATION.combat;
-      this.run.maxCombo = Math.max(this.run.maxCombo, Math.floor(progress * 48));
-      this.run.maxDps = Math.max(this.run.maxDps, Math.floor(1200 * progress * progress + this.run.fusionCount * 300));
-      if (!this.overdrive && (this.phaseElapsed > 18_000 || this.run.maxCombo >= 12)) {
+      const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
+      const comboCeiling = 8 + equippedCount * 5 + this.run.fusionCount * 7;
+      const liveDps = this.estimateLiveDps();
+      this.run.maxCombo = Math.max(this.run.maxCombo, Math.floor(progress * comboCeiling));
+      this.run.maxDps = Math.max(this.run.maxDps, Math.floor(liveDps * (0.72 + progress * 1.45) * (this.overdrive ? 1.8 : 1)));
+      if (!this.overdrive && (this.phaseElapsed > 18_000 || this.run.maxCombo >= 18)) {
         this.overdrive = true;
         this.floatingTexts.push({ text: "超载！所有零件频率翻倍", ttl: 1300, color: "#ffef6e" });
       }
@@ -327,7 +330,7 @@ export class GameApp {
     }
 
     if (this.run.phase === "combat") {
-      this.finishCombat();
+      this.manualStrike(point);
       return;
     }
 
@@ -567,5 +570,24 @@ export class GameApp {
       back: "背部",
       feet: "脚部"
     }[slotId];
+  }
+
+  private manualStrike(point: { x: number; y: number }): void {
+    const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
+    if (equippedCount === 0) return;
+    const hitEnemySide = point.x > 190 && point.y > 170 && point.y < 500;
+    const comboGain = hitEnemySide ? 2 + this.run.fusionCount : 1;
+    const dpsGain = (hitEnemySide ? 180 : 70) * equippedCount * (1 + this.run.fusionCount * 0.45);
+    this.run.maxCombo += comboGain;
+    this.run.maxDps += Math.round(dpsGain);
+    if (hitEnemySide && this.run.maxCombo >= 10) {
+      this.overdrive = true;
+    }
+    navigator.vibrate?.(25);
+  }
+
+  private estimateLiveDps(): number {
+    const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
+    return Math.max(800, estimateBuildPower(equipped) * 3.4);
   }
 }

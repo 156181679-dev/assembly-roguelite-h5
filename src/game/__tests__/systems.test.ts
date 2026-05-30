@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialRunState, PART_DEFS, FUSION_RULES } from "../data";
-import { drawLootRewards } from "../systems/LootSystem";
+import { drawLootRewards, rarityTier } from "../systems/LootSystem";
 import { fuseParts } from "../systems/FusionSystem";
 import { createMemoryStorage, MuseumSystem } from "../systems/MuseumSystem";
 
@@ -17,6 +17,27 @@ describe("loot rewards", () => {
     expect(rewards).toHaveLength(3);
     expect(new Set(rewards.map((part) => part.id)).size).toBe(3);
     expect(rewards.every((part) => part.category !== "catalyst")).toBe(true);
+  });
+
+  it("offers a mix of reward categories and rarities when possible", () => {
+    const run = createInitialRunState();
+    const rewards = drawLootRewards({
+      round: 1,
+      parts: PART_DEFS,
+      ownedPartIds: run.ownedPartIds,
+      random: () => 0.01
+    });
+
+    expect(rewards).toHaveLength(3);
+    expect(new Set(rewards.map((part) => part.category)).size).toBeGreaterThan(1);
+    expect(new Set(rewards.map((part) => part.rarity)).size).toBeGreaterThan(1);
+  });
+
+  it("maps reward rarity to presentation tiers", () => {
+    expect(rarityTier(PART_DEFS.find((part) => part.rarity === "common")!)).toBe("SR");
+    expect(rarityTier(PART_DEFS.find((part) => part.rarity === "rare")!)).toBe("SSR");
+    expect(rarityTier(PART_DEFS.find((part) => part.rarity === "epic" && part.category !== "catalyst")!)).toBe("UR");
+    expect(rarityTier(PART_DEFS.find((part) => part.category === "catalyst")!)).toBe("UR");
   });
 
   it("adds one catalyst reward on the third round", () => {

@@ -1,4 +1,5 @@
 import { SLOT_ORDER } from "../data";
+import { rarityTier } from "../systems/LootSystem";
 import type { EquippedItem, GamePhase, MuseumRecord, PartDef, SlotId } from "../types";
 
 export type ButtonId =
@@ -246,7 +247,8 @@ export class CanvasRenderer {
     this.drawCenteredText("恭喜获得", 180, 150, 30, PALETTE.yellow, "900");
     model.rewards.slice(0, 4).forEach((part, index) => {
       const x = 62 + index * 78;
-      this.drawNeonPanel(x - 30, 228, 60, 88, part.color, 6);
+      this.drawNeonPanel(x - 30, 228, 60, 88, this.rarityColor(part), 6);
+      this.drawCenteredText(this.rarityLabel(part), x, 246, 12, PALETTE.yellow, "900");
       this.drawPartIcon(part, x, 262, 20);
       this.drawCenteredText(part.name, x, 304, 10, PALETTE.white, "800");
     });
@@ -322,8 +324,8 @@ export class CanvasRenderer {
 
   private drawTutorial(_model: RenderModel): void {
     this.drawNeonPanel(22, 138, 316, 300, PALETTE.purple, 12);
-    this.drawCenteredText("轮盘开箱", 180, 205, 24, PALETTE.yellow, "900");
-    this.drawCenteredText("点击屏幕任意位置停止轮盘，获得零件", 180, 250, 14, PALETTE.white, "800");
+    this.drawCenteredText("补给开箱", 180, 205, 24, PALETTE.yellow, "900");
+    this.drawCenteredText("点击补给机抽取本轮零件", 180, 250, 14, PALETTE.white, "800");
     this.drawButton("continue", 96, 360, 168, 38, "知道了");
   }
 
@@ -538,37 +540,42 @@ export class CanvasRenderer {
 
   private drawLoot(model: RenderModel): void {
     this.drawNeonPanel(18, 101, 324, 452, PALETTE.purple, 14);
-    this.drawCenteredText("1. 轮盘开箱", 180, 133, 23, PALETTE.white, "900");
-    const cx = 180;
-    const cy = 306;
-    const radius = 128;
-    for (let i = 0; i < 8; i += 1) {
-      const start = -Math.PI / 2 + (Math.PI * 2 * i) / 8 + model.phaseProgress * 10;
-      const end = start + Math.PI / 4;
-      const reward = model.rewards[i % Math.max(model.rewards.length, 1)];
-      this.ctx.beginPath();
-      this.ctx.moveTo(cx, cy);
-      this.ctx.arc(cx, cy, radius, start, end);
-      this.ctx.closePath();
-      this.ctx.fillStyle = i % 2 === 0 ? "rgba(255, 43, 214, 0.42)" : "rgba(18, 244, 255, 0.32)";
-      this.ctx.fill();
-      this.ctx.strokeStyle = "rgba(255,255,255,0.48)";
-      this.ctx.stroke();
-      if (reward) {
-        const mid = (start + end) / 2;
-        this.drawPartIcon(reward, cx + Math.cos(mid) * 82, cy + Math.sin(mid) * 82, 25);
-        this.drawCenteredText(reward.rarity.toUpperCase(), cx + Math.cos(mid) * 112, cy + Math.sin(mid) * 112 + 4, 10, PALETTE.yellow, "900");
-      }
+    this.drawCenteredText("1. 补给开箱", 180, 133, 23, PALETTE.white, "900");
+    this.drawLootMachine(model);
+    this.drawButton("continue", 101, 492, 158, 42, "开启补给箱");
+    this.drawPrimaryHint("本轮抽取 3 件零件，稀有度会影响战斗火力", 474);
+  }
+
+  private drawLootMachine(model: RenderModel): void {
+    const ctx = this.ctx;
+    this.drawNeonPanel(42, 158, 276, 92, PALETTE.cyan, 12);
+    this.drawCenteredText("本轮掉落预览", 180, 187, 17, PALETTE.cyan, "900");
+    this.drawCenteredText("SR / SSR / UR", 180, 218, 26, PALETTE.yellow, "900");
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    for (let i = 0; i < 10; i += 1) {
+      this.drawSlash(48 + i * 28, 236, 30, i % 2 ? PALETTE.purple : PALETTE.cyan, 0.45);
     }
-    this.ctx.beginPath();
-    this.ctx.arc(cx, cy, 42, 0, Math.PI * 2);
-    this.ctx.fillStyle = "#0d0b20";
-    this.ctx.fill();
-    this.drawCenteredText("SSR", cx, cy - 4, 19, PALETTE.yellow, "900");
-    this.drawCenteredText("STOP", cx, cy + 17, 11, PALETTE.white, "900");
-    this.drawPointer(cx, cy - radius - 18);
-    this.drawButton("continue", 101, 492, 158, 42, "转动轮盘");
-    this.drawPrimaryHint("点击任意处停轮盘，爆出 3 个零件", 474);
+    ctx.restore();
+
+    model.rewards.slice(0, 3).forEach((part, index) => {
+      this.drawLootCard(part, 48 + index * 104, 270, 88, 126, index, model.phaseProgress);
+    });
+
+    this.drawNeonPanel(58, 414, 244, 36, PALETTE.purple, 8);
+    const labels = ["SR 基础火力", "SSR 稀有词条", "UR 催化融合"];
+    labels.forEach((label, index) => {
+      this.drawText(label, 74 + index * 82, 438, 10, index === 0 ? PALETTE.cyan : index === 1 ? PALETTE.yellow : PALETTE.purple, "900");
+    });
+  }
+
+  private drawLootCard(part: PartDef, x: number, y: number, w: number, h: number, index: number, progress: number): void {
+    const color = this.rarityColor(part);
+    const pulse = Math.sin(progress * Math.PI * 8 + index) * 2;
+    this.drawNeonPanel(x, y + pulse, w, h, color, 8);
+    this.drawCenteredText(this.rarityLabel(part), x + w / 2, y + 24 + pulse, 15, PALETTE.yellow, "900");
+    this.drawPartIcon(part, x + w / 2, y + 66 + pulse, 25);
+    this.drawCenteredText(part.name, x + w / 2, y + 106 + pulse, 10, PALETTE.white, "900");
   }
 
   private drawAssembly(model: RenderModel): void {
@@ -590,7 +597,8 @@ export class CanvasRenderer {
   }
 
   private drawCombat(model: RenderModel): void {
-    const bossHpRatio = Math.max(0.03, 1 - model.phaseProgress * (model.overdrive ? 1.02 : 0.9));
+    const pressure = Math.min(0.28, model.maxDps / 180_000) + Math.min(0.18, model.maxCombo * 0.006);
+    const bossHpRatio = Math.max(0.03, 1 - model.phaseProgress * (model.overdrive ? 0.86 : 0.68) - pressure);
     const remainingSeconds = Math.max(0, Math.ceil(60 * (1 - model.phaseProgress)));
     this.drawNeonPanel(14, 96, 332, 460, model.overdrive ? PALETTE.yellow : PALETTE.purple, 12);
     this.drawCombatArena(model);
@@ -647,6 +655,7 @@ export class CanvasRenderer {
     this.drawCenteredText(`${remainingSeconds}s`, 176, 166, 16, PALETTE.yellow, "900");
     this.drawText(`DPS ${this.formatMetric(Math.max(model.maxDps, 973))}`, 316, 166, 13, PALETTE.cyan, "900", "right");
     this.drawBar(44, 176, 272, 6, bossHpRatio, PALETTE.red, "rgba(255,255,255,0.18)");
+    this.drawCenteredText("点击敌人追加火力", 180, 195, 11, "rgba(255,255,255,0.78)", "800");
   }
 
   private drawCombatEnemies(model: RenderModel, bossHpRatio: number): void {
@@ -693,8 +702,31 @@ export class CanvasRenderer {
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       ctx.restore();
-      this.drawItem(item, pos.x, pos.y, item.fused ? 22 : 17, true);
+      this.drawCombatWeaponPod(item, pos.x, pos.y, item.fused ? 1.15 : 1);
     }
+  }
+
+  private drawCombatWeaponPod(item: EquippedItem, x: number, y: number, scale: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(item.fused ? -0.28 : 0);
+    ctx.shadowBlur = item.fused ? 18 : 10;
+    ctx.shadowColor = item.color;
+    ctx.fillStyle = "rgba(9,10,24,0.92)";
+    ctx.strokeStyle = item.color;
+    ctx.lineWidth = item.fused ? 3 : 2;
+    ctx.beginPath();
+    ctx.roundRect(-16 * scale, -11 * scale, 32 * scale, 22 * scale, 8 * scale);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = item.color;
+    ctx.fillRect(5 * scale, -4 * scale, 18 * scale, 8 * scale);
+    ctx.strokeStyle = PALETTE.white;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(5 * scale, -4 * scale, 18 * scale, 8 * scale);
+    ctx.restore();
+    this.drawCenteredText(item.fused ? "SSR" : item.icon.slice(0, 1), x, y + 24 * scale, item.fused ? 9 : 10, item.fused ? PALETTE.yellow : PALETTE.white, "900");
   }
 
   private drawCombatAttacks(model: RenderModel): void {
@@ -709,7 +741,7 @@ export class CanvasRenderer {
       fused: item.fused
     }));
 
-    projectiles.slice(0, 16).forEach((projectile, index) => {
+    projectiles.slice(0, 8).forEach((projectile, index) => {
       const start = positions[index % positions.length];
       const target = {
         x: 260 + Math.cos(index * 1.7) * 44,
@@ -724,11 +756,44 @@ export class CanvasRenderer {
       const prev = this.quadraticPoint(start, control, target, Math.max(0, t - 0.08));
       const point = this.quadraticPoint(start, control, target, t);
       this.drawLaser(prev.x, prev.y, point.x, point.y, projectile.color, model.overdrive || projectile.fused ? 5 : 3);
-      this.drawProjectile(projectile, point.x, point.y, model.overdrive || projectile.fused);
+      this.drawCombatProjectile(projectile, point.x, point.y, model.overdrive || projectile.fused, index);
       if (t > 0.82) {
         this.drawExplosion(target.x, target.y, projectile.color, 1 - (t - 0.82) / 0.18);
       }
     });
+  }
+
+  private drawCombatProjectile(projectile: ProjectileRenderState, x: number, y: number, intense: boolean, index: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(projectile.angle + index * 0.4);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.shadowBlur = intense ? 18 : 10;
+    ctx.shadowColor = projectile.color;
+    ctx.fillStyle = projectile.fused ? PALETTE.yellow : projectile.color;
+    ctx.strokeStyle = PALETTE.white;
+    ctx.lineWidth = 1.5;
+    if (projectile.fused) {
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(-8, -9);
+      ctx.lineTo(-2, 0);
+      ctx.lineTo(-8, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = projectile.color;
+      ctx.fillRect(-20, -3, 16, 6);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillRect(-16, -1, 14, 2);
+    }
+    ctx.restore();
   }
 
   private drawCombatDamage(model: RenderModel): void {
@@ -1355,6 +1420,16 @@ export class CanvasRenderer {
     return Math.round(value).toString();
   }
 
+  private rarityLabel(part: PartDef): string {
+    return rarityTier(part);
+  }
+
+  private rarityColor(part: PartDef): string {
+    if (part.category === "catalyst" || part.rarity === "epic") return PALETTE.yellow;
+    if (part.rarity === "rare") return PALETTE.purple;
+    return PALETTE.cyan;
+  }
+
   private drawPointer(x: number, y: number): void {
     const ctx = this.ctx;
     ctx.fillStyle = PALETTE.yellow;
@@ -1524,7 +1599,7 @@ export class CanvasRenderer {
     const names: Record<GamePhase, string> = {
       launch: "启动页",
       home: "首页",
-      loot: "轮盘开箱",
+      loot: "补给开箱",
       lootResult: "开箱结果",
       assembly: "超级拼装",
       fusion: "随意融合",
