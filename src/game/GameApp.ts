@@ -73,6 +73,11 @@ export class GameApp {
   private floatingTexts: FloatingText[] = [];
   private projectiles: Projectile[] = [];
   private overdrive = false;
+  private combatEnergy = 0;
+  private combatFocusMs = 0;
+  private combatShieldMs = 0;
+  private targetLockMs = 0;
+  private combatActionScore = 0;
   private shareImageDataUrl = "";
   private animationHandle = 0;
   private tutorial = true;
@@ -103,6 +108,7 @@ export class GameApp {
     this.run = createInitialRunState();
     this.phaseElapsed = 0;
     this.overdrive = false;
+    this.resetCombatInput();
     this.shareImageDataUrl = "";
     this.projectiles = [];
     this.floatingTexts = [];
@@ -128,6 +134,7 @@ export class GameApp {
     this.run = createInitialRunState();
     this.phaseElapsed = 0;
     this.overdrive = false;
+    this.resetCombatInput();
     this.shareImageDataUrl = "";
     this.projectiles = [];
     this.floatingTexts = [];
@@ -186,15 +193,23 @@ export class GameApp {
     this.enterPhase("combat");
     this.projectiles = this.createProjectiles();
     this.floatingTexts = [];
+    this.combatEnergy = Math.max(this.combatEnergy, 24);
+    this.combatFocusMs = 0;
+    this.combatShieldMs = 0;
+    this.targetLockMs = 900;
+    this.combatActionScore = 0;
   }
 
   private finishCombat(): void {
     const equipped = Object.values(this.run.equipped).filter(Boolean) as EquippedItem[];
     const summary = simulateCombat(equipped);
-    this.run.result = summary.result;
-    this.run.maxCombo = summary.maxCombo;
-    this.run.maxDps = summary.maxDps;
-    this.overdrive = summary.overdriveTriggered;
+    const actionDpsBonus = Math.round(this.combatActionScore * 36 + (this.overdrive ? summary.maxDps * 0.22 : 0));
+    const actionComboBonus = Math.floor(this.combatActionScore / 8);
+    this.run.maxDps = Math.max(summary.maxDps + actionDpsBonus, this.run.maxDps);
+    this.run.maxCombo = Math.max(summary.maxCombo + actionComboBonus, this.run.maxCombo);
+    this.overdrive = this.overdrive || summary.overdriveTriggered;
+    const clutchVictory = this.combatActionScore >= 42 && this.run.maxCombo >= 18;
+    this.run.result = summary.result === "victory" || clutchVictory ? "victory" : "death";
     this.enterPhase("result");
     this.shareImageDataUrl = this.renderer.createShareCard(this.renderModel());
     this.museum.save(this.createMuseumRecord());
@@ -274,8 +289,17 @@ export class GameApp {
       const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
       const comboCeiling = 8 + equippedCount * 5 + this.run.fusionCount * 7;
       const liveDps = this.estimateLiveDps();
-      this.run.maxCombo = Math.max(this.run.maxCombo, Math.floor(progress * comboCeiling));
-      this.run.maxDps = Math.max(this.run.maxDps, Math.floor(liveDps * (0.72 + progress * 1.45) * (this.overdrive ? 1.8 : 1)));
+      this.combatEnergy = Math.min(100, this.combatEnergy + (dt / 1000) * (2.1 + equippedCount * 0.24));
+      this.combatFocusMs = Math.max(0, this.combatFocusMs - dt);
+      this.combatShieldMs = Math.max(0, this.combatShieldMs - dt);
+      this.targetLockMs = Math.max(0, this.targetLockMs - dt);
+      const focusMultiplier = this.combatFocusMs > 0 ? 1.85 : 1;
+      const shieldMultiplier = this.combatShieldMs > 0 ? 1.12 : 1;
+      this.run.maxCombo = Math.max(this.run.maxCombo, Math.floor(progress * comboCeiling * focusMultiplier));
+      this.run.maxDps = Math.max(
+        this.run.maxDps,
+        Math.floor(liveDps * (0.72 + progress * 1.45) * (this.overdrive ? 1.8 : 1) * focusMultiplier * shieldMultiplier)
+      );
       if (!this.overdrive && (this.phaseElapsed > 18_000 || this.run.maxCombo >= 18)) {
         this.overdrive = true;
         this.floatingTexts.push({ text: "超载！所有零件频率翻倍", ttl: 1300, color: "#ffef6e" });
@@ -300,6 +324,10 @@ export class GameApp {
       floatingTexts: this.floatingTexts,
       projectiles: this.projectiles,
       overdrive: this.overdrive,
+      combatEnergy: this.combatEnergy,
+      combatFocus: Math.min(1, this.combatFocusMs / 4200),
+      combatShield: Math.min(1, this.combatShieldMs / 5200),
+      targetLock: Math.min(1, this.targetLockMs / 900),
       maxCombo: this.run.maxCombo,
       maxDps: this.run.maxDps,
       fusionCount: this.run.fusionCount,
@@ -518,6 +546,18 @@ export class GameApp {
       this.enterPhase("museum");
       return;
     }
+    if (button === "combatAim") {
+      this.triggerCombatAim();
+      return;
+    }
+    if (button === "combatBurst") {
+      this.triggerCombatBurst();
+      return;
+    }
+    if (button === "combatShield") {
+      this.triggerCombatShield();
+      return;
+    }
     if (button === "autoEquip") {
       if (this.run.inventory.length === 0) {
         this.floatingTexts.push({ text: "零件栏已空，拖已装零件可继续调整", ttl: 1100, color: "#ffffff" });
@@ -580,10 +620,62 @@ export class GameApp {
     const dpsGain = (hitEnemySide ? 180 : 70) * equippedCount * (1 + this.run.fusionCount * 0.45);
     this.run.maxCombo += comboGain;
     this.run.maxDps += Math.round(dpsGain);
+    this.combatActionScore += hitEnemySide ? 4 : 1;
+    this.combatEnergy = Math.min(100, this.combatEnergy + (hitEnemySide ? 9 : 3));
+    this.targetLockMs = hitEnemySide ? 900 : Math.max(this.targetLockMs, 360);
     if (hitEnemySide && this.run.maxCombo >= 10) {
       this.overdrive = true;
     }
     navigator.vibrate?.(25);
+  }
+
+  private triggerCombatAim(): void {
+    if (this.run.phase !== "combat") return;
+    this.manualStrike({ x: 260, y: 286 });
+    this.manualStrike({ x: 262, y: 310 });
+    this.floatingTexts.push({ text: "弱点锁定：手动集火", ttl: 650, color: "#12f4ff" });
+  }
+
+  private triggerCombatBurst(): void {
+    if (this.run.phase !== "combat") return;
+    if (!this.spendCombatEnergy(42, "能量不足，先点敌人锁定")) return;
+    const equippedCount = Object.values(this.run.equipped).filter(Boolean).length;
+    this.combatFocusMs = 4200;
+    this.targetLockMs = 900;
+    this.combatActionScore += 14;
+    this.run.maxCombo += 6 + this.run.fusionCount * 2;
+    this.run.maxDps += Math.round((1400 + equippedCount * 520) * (1 + this.run.fusionCount * 0.55));
+    this.overdrive = true;
+    this.floatingTexts.push({ text: "集火爆发！所有武器同步开火", ttl: 900, color: "#ffe329" });
+    navigator.vibrate?.([35, 25, 50]);
+  }
+
+  private triggerCombatShield(): void {
+    if (this.run.phase !== "combat") return;
+    if (!this.spendCombatEnergy(28, "能量不足，继续攻击蓄能")) return;
+    this.combatShieldMs = 5200;
+    this.combatActionScore += 7;
+    this.run.maxCombo += 3;
+    this.run.maxDps += 460 + this.run.fusionCount * 180;
+    this.floatingTexts.push({ text: "护盾稳态：连击不断", ttl: 900, color: "#b9ffcf" });
+    navigator.vibrate?.(40);
+  }
+
+  private spendCombatEnergy(cost: number, failureText: string): boolean {
+    if (this.combatEnergy < cost) {
+      this.floatingTexts.push({ text: failureText, ttl: 800, color: "#ffffff" });
+      return false;
+    }
+    this.combatEnergy -= cost;
+    return true;
+  }
+
+  private resetCombatInput(): void {
+    this.combatEnergy = 0;
+    this.combatFocusMs = 0;
+    this.combatShieldMs = 0;
+    this.targetLockMs = 0;
+    this.combatActionScore = 0;
   }
 
   private estimateLiveDps(): number {

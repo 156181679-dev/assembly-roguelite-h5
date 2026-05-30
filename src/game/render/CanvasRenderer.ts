@@ -22,7 +22,10 @@ export type ButtonId =
   | "tabAssembly"
   | "tabFusion"
   | "tabCombat"
-  | "tabMuseum";
+  | "tabMuseum"
+  | "combatAim"
+  | "combatBurst"
+  | "combatShield";
 
 interface DragRenderState {
   item: EquippedItem;
@@ -58,6 +61,10 @@ export interface RenderModel {
   floatingTexts: FloatingTextRenderState[];
   projectiles: ProjectileRenderState[];
   overdrive: boolean;
+  combatEnergy: number;
+  combatFocus: number;
+  combatShield: number;
+  targetLock: number;
   maxCombo: number;
   maxDps: number;
   fusionCount: number;
@@ -608,6 +615,7 @@ export class CanvasRenderer {
     this.drawCombatWeaponMounts(model);
     this.drawCombatAttacks(model);
     this.drawCombatDamage(model);
+    this.drawCombatControls(model);
   }
 
   private drawCombatArena(model: RenderModel): void {
@@ -655,7 +663,9 @@ export class CanvasRenderer {
     this.drawCenteredText(`${remainingSeconds}s`, 176, 166, 16, PALETTE.yellow, "900");
     this.drawText(`DPS ${this.formatMetric(Math.max(model.maxDps, 973))}`, 316, 166, 13, PALETTE.cyan, "900", "right");
     this.drawBar(44, 176, 272, 6, bossHpRatio, PALETTE.red, "rgba(255,255,255,0.18)");
-    this.drawCenteredText("点击敌人追加火力", 180, 195, 11, "rgba(255,255,255,0.78)", "800");
+    this.drawBar(44, 187, 130, 5, model.combatEnergy / 100, PALETTE.yellow, "rgba(255,255,255,0.16)");
+    this.drawText(`能量 ${Math.floor(model.combatEnergy)}`, 180, 193, 10, PALETTE.yellow, "900");
+    this.drawCenteredText("点敌人锁定弱点，蓄能后释放技能", 198, 205, 10, "rgba(255,255,255,0.78)", "800");
   }
 
   private drawCombatEnemies(model: RenderModel, bossHpRatio: number): void {
@@ -663,6 +673,7 @@ export class CanvasRenderer {
     this.drawMinion(226, 418, model.phaseProgress + 0.28, PALETTE.red);
     this.drawMinion(306, 442, model.phaseProgress + 0.53, PALETTE.orange);
     this.drawBoss(260, 276, model.overdrive);
+    if (model.targetLock > 0) this.drawTargetReticle(260, 276, model.targetLock);
     this.drawCenteredText(`裂隙首领 ${Math.ceil(bossHpRatio * 100)}%`, 260, 200, 13, PALETTE.white, "900");
   }
 
@@ -677,6 +688,13 @@ export class CanvasRenderer {
     ctx.beginPath();
     ctx.ellipse(112, 494, 62, 14, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (model.combatShield > 0) {
+      ctx.strokeStyle = `rgba(185,255,207,${0.28 + model.combatShield * 0.5})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.ellipse(112, 394, 78, 124, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (this.isImageReady(this.assets.hero)) {
       ctx.drawImage(this.assets.hero, x, y, 142, 214);
     } else {
@@ -747,7 +765,7 @@ export class CanvasRenderer {
         x: 260 + Math.cos(index * 1.7) * 44,
         y: 276 + Math.sin(index * 1.3) * 54
       };
-      const speed = projectile.fused ? 5.8 : 4.2;
+      const speed = (projectile.fused ? 5.8 : 4.2) * (1 + model.combatFocus * 0.65);
       const t = (model.phaseProgress * speed + index * 0.17) % 1;
       const control = {
         x: (start.x + target.x) / 2 + Math.sin(index * 2.1) * 34,
@@ -755,7 +773,7 @@ export class CanvasRenderer {
       };
       const prev = this.quadraticPoint(start, control, target, Math.max(0, t - 0.08));
       const point = this.quadraticPoint(start, control, target, t);
-      this.drawLaser(prev.x, prev.y, point.x, point.y, projectile.color, model.overdrive || projectile.fused ? 5 : 3);
+      this.drawLaser(prev.x, prev.y, point.x, point.y, projectile.color, model.overdrive || projectile.fused || model.combatFocus > 0 ? 5 : 3);
       this.drawCombatProjectile(projectile, point.x, point.y, model.overdrive || projectile.fused, index);
       if (t > 0.82) {
         this.drawExplosion(target.x, target.y, projectile.color, 1 - (t - 0.82) / 0.18);
@@ -808,6 +826,68 @@ export class CanvasRenderer {
     }
     this.drawNeonPanel(58, 510, 244, 34, model.overdrive ? PALETTE.yellow : PALETTE.cyan, 7);
     this.drawCenteredText(`COMBO x${Math.max(model.maxCombo, model.overdrive ? 56 : 1)}  秒伤 ${this.formatMetric(Math.max(model.maxDps, 973))}`, 180, 533, 15, model.overdrive ? PALETTE.yellow : PALETTE.cyan, "900");
+    if (model.combatFocus > 0) this.drawCenteredText("集火中", 248, 228, 14, PALETTE.yellow, "900");
+    if (model.combatShield > 0) this.drawCenteredText("护盾稳态", 108, 254, 12, "#b9ffcf", "900");
+  }
+
+  private drawCombatControls(model: RenderModel): void {
+    this.drawCombatSkillButton("combatAim", 38, 462, 82, 34, "锁定", "点射", PALETTE.cyan, true);
+    this.drawCombatSkillButton("combatBurst", 139, 462, 82, 34, "集火", "42能量", PALETTE.yellow, model.combatEnergy >= 42);
+    this.drawCombatSkillButton("combatShield", 240, 462, 82, 34, "护盾", "28能量", "#b9ffcf", model.combatEnergy >= 28);
+  }
+
+  private drawCombatSkillButton(
+    id: ButtonId,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    label: string,
+    subLabel: string,
+    color: string,
+    enabled: boolean
+  ): void {
+    this.buttons.push(button(id, x, y, w, h));
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = enabled ? 1 : 0.42;
+    ctx.shadowBlur = enabled ? 14 : 0;
+    ctx.shadowColor = color;
+    ctx.fillStyle = enabled ? "rgba(10,13,29,0.92)" : "rgba(40,40,48,0.72)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    this.drawCenteredText(label, x + w / 2, y + 15, 13, enabled ? color : "rgba(255,255,255,0.62)", "900");
+    this.drawCenteredText(subLabel, x + w / 2, y + 29, 9, enabled ? PALETTE.white : "rgba(255,255,255,0.44)", "800");
+  }
+
+  private drawTargetReticle(x: number, y: number, intensity: number): void {
+    const ctx = this.ctx;
+    const radius = 34 + (1 - intensity) * 12;
+    ctx.save();
+    ctx.globalAlpha = 0.35 + intensity * 0.55;
+    ctx.strokeStyle = PALETTE.yellow;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = PALETTE.yellow;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - radius - 10, y);
+    ctx.lineTo(x - radius + 8, y);
+    ctx.moveTo(x + radius - 8, y);
+    ctx.lineTo(x + radius + 10, y);
+    ctx.moveTo(x, y - radius - 10);
+    ctx.lineTo(x, y - radius + 8);
+    ctx.moveTo(x, y + radius - 8);
+    ctx.lineTo(x, y + radius + 10);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawMinion(x: number, y: number, progress: number, color: string): void {
