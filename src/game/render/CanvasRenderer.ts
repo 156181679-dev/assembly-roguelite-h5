@@ -177,11 +177,11 @@ export class CanvasRenderer {
     this.canvas = canvas;
     this.ctx = ctx;
     this.assets = {
-      hero: this.loadImage("/assets/generated/mecha-fish-base.png"),
-      heroArmed: this.loadImage("/assets/generated/mecha-fish-hero.png"),
-      parts: this.loadImage("/assets/generated/base-parts-sheet.png"),
-      weapons: this.loadImage("/assets/generated/fusion-weapons-12-sheet.png"),
-      boss: this.loadImage("/assets/generated/boss-asteroid-demon.png")
+      hero: this.loadImage("/assets/optimized/mecha-fish-base.webp"),
+      heroArmed: this.loadImage("/assets/optimized/mecha-fish-hero.webp"),
+      parts: this.loadImage("/assets/optimized/base-parts-sheet.webp"),
+      weapons: this.loadImage("/assets/optimized/fusion-weapons-12-sheet.webp"),
+      boss: this.loadImage("/assets/optimized/boss-asteroid-demon.webp")
     };
   }
 
