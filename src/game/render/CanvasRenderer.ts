@@ -166,7 +166,7 @@ const button = (id: ButtonId, x: number, y: number, w: number, h: number): Rect 
 export class CanvasRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly assets: Record<"hero" | "parts" | "weapons" | "boss", HTMLImageElement>;
+  private readonly assets: Record<"hero" | "heroArmed" | "parts" | "weapons" | "boss", HTMLImageElement>;
   private buttons: Rect[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -178,6 +178,7 @@ export class CanvasRenderer {
     this.ctx = ctx;
     this.assets = {
       hero: this.loadImage("/assets/generated/mecha-fish-base.png"),
+      heroArmed: this.loadImage("/assets/generated/mecha-fish-hero.png"),
       parts: this.loadImage("/assets/generated/base-parts-sheet.png"),
       weapons: this.loadImage("/assets/generated/fusion-weapons-12-sheet.png"),
       boss: this.loadImage("/assets/generated/boss-asteroid-demon.png")
@@ -226,24 +227,11 @@ export class CanvasRenderer {
   }
 
   private drawLaunch(model: RenderModel): void {
-    this.drawBackground(model);
-    this.ctx.save();
-    this.ctx.globalAlpha = 0.56;
-    this.drawHalftone(46, 148, 4, 9, PALETTE.purple, 0.28);
-    this.drawHalftone(266, 134, 4, 8, PALETTE.cyan, 0.22);
-    this.drawLightning(24, 126, 94, 226, PALETTE.cyan, 0.38);
-    this.drawLightning(328, 132, 258, 256, PALETTE.purple, 0.42);
-    this.ctx.restore();
-    this.drawLogoBackplate(180, 54, 300, 110);
-    if (this.isImageReady(this.assets.hero)) {
-      this.ctx.save();
-      this.ctx.shadowBlur = 38;
-      this.ctx.shadowColor = PALETTE.cyan;
-      this.ctx.drawImage(this.assets.hero, 73, 190, 220, 322);
-      this.ctx.restore();
-    }
-    this.drawPosterTitleLogo(180, 82, 43);
-    this.drawButton("start", 76, 540, 208, 50, "开始游戏");
+    this.drawLaunchPosterBackground(model);
+    this.drawLaunchTitleLogo(180, 78, 1);
+    this.drawLaunchHero(model);
+    this.drawLaunchForegroundSparks(model);
+    this.drawLaunchStartButton("start", 86, 552, 188, 46, "开始游戏");
   }
 
   private drawHome(model: RenderModel): void {
@@ -266,6 +254,190 @@ export class CanvasRenderer {
     this.drawHomeNavButton("missions", 102, 548, 72, "任务");
     this.drawHomeNavButton("achievements", 186, 548, 72, "排行");
     this.drawHomeNavButton("weaponDetail", 270, 548, 72, "仓库");
+  }
+
+  private drawLaunchPosterBackground(model: RenderModel): void {
+    const ctx = this.ctx;
+    const pulse = 0.5 + Math.sin(performance.now() / 520) * 0.5;
+    const bg = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+    bg.addColorStop(0, "#09031d");
+    bg.addColorStop(0.26, "#2b075d");
+    bg.addColorStop(0.52, "#150535");
+    bg.addColorStop(0.78, "#370557");
+    bg.addColorStop(1, "#07020f");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.26 + pulse * 0.08;
+    for (let i = 0; i < 22; i += 1) {
+      const y = 38 + i * 24;
+      const x = i % 2 ? 326 : -42;
+      const length = 86 + (i % 5) * 18;
+      this.drawSlash(x, y, length, i % 3 === 0 ? PALETTE.orange : PALETTE.purple, 0.54);
+    }
+    ctx.restore();
+
+    this.drawHalftone(22, 34, 3, 12, PALETTE.purple, 0.34);
+    this.drawHalftone(252, 46, 3, 9, PALETTE.purple, 0.26);
+    this.drawHalftone(20, 472, 3, 9, PALETTE.cyan, 0.16);
+    this.drawLightning(18, 26, 72, 156, PALETTE.cyan, 0.78);
+    this.drawLightning(342, 72, 278, 222, PALETTE.purple, 0.86);
+    this.drawLightning(42, 194, 106, 340, PALETTE.purple, 0.58);
+    this.drawLightning(312, 260, 250, 460, PALETTE.cyan, 0.48);
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,43,214,0.96)";
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = PALETTE.purple;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(5, 5, WIDTH - 10, HEIGHT - 10, 13);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.roundRect(13, 14, WIDTH - 26, HEIGHT - 28, 9);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    const lowerShade = ctx.createLinearGradient(0, 416, 0, HEIGHT);
+    lowerShade.addColorStop(0, "rgba(5,2,17,0)");
+    lowerShade.addColorStop(0.62, "rgba(5,2,17,0.46)");
+    lowerShade.addColorStop(1, "rgba(5,2,17,0.88)");
+    ctx.fillStyle = lowerShade;
+    ctx.fillRect(0, 416, WIDTH, HEIGHT - 416);
+    ctx.globalAlpha = 0.16 + Math.min(0.12, model.phaseProgress);
+    ctx.fillStyle = PALETTE.purple;
+    ctx.fillRect(9, HEIGHT - 16, WIDTH - 18, 2);
+    ctx.restore();
+  }
+
+  private drawLaunchTitleLogo(x: number, y: number, scale: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.shadowBlur = 24;
+    ctx.shadowColor = PALETTE.purple;
+    ctx.fillStyle = "rgba(3, 2, 10, 0.9)";
+    ctx.beginPath();
+    ctx.moveTo(36, y - 42);
+    ctx.lineTo(314, y - 54);
+    ctx.lineTo(330, y - 11);
+    ctx.lineTo(276, y + 8);
+    ctx.lineTo(70, y + 4);
+    ctx.lineTo(26, y - 16);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = "rgba(255,43,214,0.88)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(54, y + 12);
+    ctx.lineTo(306, y - 6);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.lineJoin = "round";
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = PALETTE.yellow;
+    ctx.font = `900 ${Math.floor(50 * scale)}px Microsoft YaHei, PingFang SC, sans-serif`;
+    ctx.strokeStyle = "#080510";
+    ctx.lineWidth = 10;
+    ctx.strokeText("拼装狂潮", x, y);
+    ctx.fillStyle = "#ffe72e";
+    ctx.fillText("拼装狂潮", x, y);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255,255,255,0.82)";
+    ctx.lineWidth = 2;
+    ctx.strokeText("拼装狂潮", x, y);
+
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = PALETTE.purple;
+    ctx.font = `900 ${Math.floor(23 * scale)}px Microsoft YaHei, PingFang SC, sans-serif`;
+    ctx.strokeStyle = "#090510";
+    ctx.lineWidth = 6;
+    ctx.strokeText("融合肉鸽", x, y + 42 * scale);
+    ctx.fillStyle = PALETTE.purple;
+    ctx.fillText("融合肉鸽", x, y + 42 * scale);
+    ctx.restore();
+  }
+
+  private drawLaunchHero(model: RenderModel): void {
+    const ctx = this.ctx;
+    const hero = this.isImageReady(this.assets.heroArmed) ? this.assets.heroArmed : this.assets.hero;
+    const bob = Math.sin(performance.now() / 420) * 2.5;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.38;
+    this.drawLightning(190, 142, 172, 520, PALETTE.cyan, 0.72);
+    this.drawLightning(242, 112, 306, 446, PALETTE.purple, 0.56);
+    ctx.restore();
+
+    if (this.isImageReady(hero)) {
+      ctx.save();
+      ctx.shadowBlur = model.overdrive ? 58 : 42;
+      ctx.shadowColor = model.overdrive ? PALETTE.yellow : PALETTE.cyan;
+      ctx.drawImage(hero, 8, 116 + bob, 348, 464);
+      ctx.restore();
+      return;
+    }
+
+    this.drawMechaPortrait(undefined, 180, 340 + bob, 1.75);
+  }
+
+  private drawLaunchForegroundSparks(_model: RenderModel): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 18; i += 1) {
+      const x = (i * 53) % WIDTH;
+      const y = 128 + ((i * 97) % 430);
+      const color = i % 3 === 0 ? PALETTE.orange : i % 3 === 1 ? PALETTE.purple : PALETTE.cyan;
+      ctx.globalAlpha = 0.2 + (i % 5) * 0.06;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = i % 4 === 0 ? 4 : 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 24, y + 14);
+      ctx.lineTo(x + 28, y - 18);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawLaunchStartButton(id: ButtonId, x: number, y: number, w: number, h: number, label: string): void {
+    this.buttons.push(button(id, x, y, w, h));
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.shadowBlur = 26;
+    ctx.shadowColor = PALETTE.purple;
+    ctx.fillStyle = "rgba(8, 3, 20, 0.86)";
+    ctx.beginPath();
+    ctx.roundRect(x - 13, y - 9, w + 26, h + 18, 6);
+    ctx.fill();
+    const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+    grad.addColorStop(0, "#37118a");
+    grad.addColorStop(0.52, "#932dff");
+    grad.addColorStop(1, "#2a0b58");
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = "#f6d7ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = PALETTE.purple;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(x - 5, y - 5, w + 10, h + 10, 7);
+    ctx.stroke();
+    ctx.restore();
+    this.drawCenteredText(label, x + w / 2, y + h / 2 + 7, 18, PALETTE.white, "900");
   }
 
   private drawLootResult(model: RenderModel): void {
