@@ -228,43 +228,44 @@ export class CanvasRenderer {
   private drawLaunch(model: RenderModel): void {
     this.drawBackground(model);
     this.ctx.save();
-    this.ctx.globalAlpha = 0.78;
-    this.drawHalftone(48, 126, 4, 10, PALETTE.purple, 0.34);
-    this.drawHalftone(248, 92, 4, 9, PALETTE.cyan, 0.26);
-    this.drawLightning(28, 108, 104, 222, PALETTE.cyan, 0.52);
-    this.drawLightning(330, 104, 250, 246, PALETTE.purple, 0.58);
+    this.ctx.globalAlpha = 0.56;
+    this.drawHalftone(46, 148, 4, 9, PALETTE.purple, 0.28);
+    this.drawHalftone(266, 134, 4, 8, PALETTE.cyan, 0.22);
+    this.drawLightning(24, 126, 94, 226, PALETTE.cyan, 0.38);
+    this.drawLightning(328, 132, 258, 256, PALETTE.purple, 0.42);
     this.ctx.restore();
+    this.drawLogoBackplate(180, 54, 300, 110);
     if (this.isImageReady(this.assets.hero)) {
       this.ctx.save();
-      this.ctx.shadowBlur = 34;
+      this.ctx.shadowBlur = 38;
       this.ctx.shadowColor = PALETTE.cyan;
-      this.ctx.drawImage(this.assets.hero, 75, 178, 230, 330);
+      this.ctx.drawImage(this.assets.hero, 73, 190, 220, 322);
       this.ctx.restore();
     }
-    this.drawTitleLogo(180, 82, 42);
-    this.drawCenteredText("融合肉鸽", 180, 130, 27, PALETTE.purple, "900");
-    this.drawButton("start", 82, 528, 196, 48, "开始游戏");
+    this.drawPosterTitleLogo(180, 82, 43);
+    this.drawButton("start", 76, 540, 208, 50, "开始游戏");
   }
 
   private drawHome(model: RenderModel): void {
     this.drawBackground(model);
     this.drawTopCurrency();
-    this.drawTitleLogo(182, 72, 31);
+    this.drawLogoBackplate(182, 60, 218, 78);
+    this.drawPosterTitleLogo(182, 72, 30);
     this.drawSideMenu();
-    this.drawNeonPanel(86, 110, 222, 318, PALETTE.purple, 12);
+    this.drawNeonPanel(92, 120, 210, 306, PALETTE.purple, 12);
     if (this.isImageReady(this.assets.hero)) {
       this.ctx.save();
       this.ctx.shadowBlur = 26;
       this.ctx.shadowColor = PALETTE.cyan;
-      this.ctx.drawImage(this.assets.hero, 108, 126, 165, 250);
+      this.ctx.drawImage(this.assets.hero, 110, 134, 162, 238);
       this.ctx.restore();
     }
-    this.drawButton("start", 88, 390, 184, 46, "开始冒险");
-    this.drawButton("graveStart", 104, 450, 152, 36, "挖坟开局");
-    this.drawHomeNavButton("shop", 28, 548, "商店");
-    this.drawHomeNavButton("missions", 110, 548, "任务");
-    this.drawHomeNavButton("achievements", 192, 548, "排行");
-    this.drawHomeNavButton("weaponDetail", 274, 548, "仓库");
+    this.drawButton("start", 84, 390, 192, 46, "开始冒险");
+    this.drawButton("graveStart", 104, 448, 152, 38, "挖坟开局");
+    this.drawHomeNavButton("shop", 18, 548, 72, "商店");
+    this.drawHomeNavButton("missions", 102, 548, 72, "任务");
+    this.drawHomeNavButton("achievements", 186, 548, 72, "排行");
+    this.drawHomeNavButton("weaponDetail", 270, 548, 72, "仓库");
   }
 
   private drawLootResult(model: RenderModel): void {
@@ -359,6 +360,23 @@ export class CanvasRenderer {
     this.drawCenteredText("融合肉鸽", x + 22, y + size * 0.72, Math.floor(size * 0.58), PALETTE.white, "900");
   }
 
+  private drawPosterTitleLogo(x: number, y: number, size: number): void {
+    this.drawCenteredText("拼装狂潮", x, y, size, PALETTE.yellow, "900");
+    this.drawCenteredText("融合肉鸽", x, y + size * 0.94, Math.floor(size * 0.58), PALETTE.purple, "900");
+  }
+
+  private drawLogoBackplate(x: number, y: number, w: number, h: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    const grad = ctx.createRadialGradient(x, y + h * 0.38, 12, x, y + h * 0.38, w * 0.62);
+    grad.addColorStop(0, "rgba(5,5,17,0.92)");
+    grad.addColorStop(0.58, "rgba(5,5,17,0.72)");
+    grad.addColorStop(1, "rgba(5,5,17,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - w / 2, y - 24, w, h + 42);
+    ctx.restore();
+  }
+
   private drawTopCurrency(): void {
     this.drawNeonPanel(18, 18, 96, 28, PALETTE.yellow, 6);
     this.drawText("◎ 123456", 30, 38, 12, PALETTE.white, "800");
@@ -382,11 +400,11 @@ export class CanvasRenderer {
     });
   }
 
-  private drawHomeNavButton(id: ButtonId, x: number, y: number, label: string): void {
-    this.buttons.push(button(id, x, y, 58, 46));
-    this.drawNeonPanel(x, y, 58, 46, PALETTE.purple, 6);
-    this.drawCenteredText(label.slice(0, 1), x + 29, y + 20, 16, PALETTE.white, "900");
-    this.drawCenteredText(label, x + 29, y + 37, 10, "rgba(255,255,255,0.82)", "800");
+  private drawHomeNavButton(id: ButtonId, x: number, y: number, w: number, label: string): void {
+    this.buttons.push(button(id, x, y, w, 54));
+    this.drawNeonPanel(x, y, w, 54, PALETTE.purple, 7);
+    this.drawCenteredText(label.slice(0, 1), x + w / 2, y + 23, 18, PALETTE.white, "900");
+    this.drawCenteredText(label, x + w / 2, y + 42, 12, "rgba(255,255,255,0.86)", "900");
   }
 
   private drawGridPage(title: string, tab: string, items: string[]): void {
